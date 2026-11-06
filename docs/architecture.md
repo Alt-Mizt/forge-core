@@ -7,12 +7,12 @@ time it may use; thin edges talk to files, provider SDKs and processes.
 flowchart TD
     cli["cli: add, accounts, gpus, check, plan, run, status, pause, resume, logs, down"]
     cli --> loop["loop: place, hold, start, follow, fetch, record"]
+    cli --> control["control: detach, pause, resume, down, status, logs"]
+    control --> loop
+    loop --> placement["core.placement: choose the account and GPU (pure)"]
     cli --> plan["plan: the route before anything runs"]
     plan --> route["core.route: placement run forward (pure)"]
     route --> placement
-    cli --> control["control: pause, resume, down, status, logs"]
-    control --> loop
-    loop --> placement["core.placement: choose the account (pure)"]
     loop --> accounting["accounting: time left, holds, usage log"]
     accounting --> quota["core.quota: time left (pure)"]
     accounting --> ledger["ledger: the usage log"]

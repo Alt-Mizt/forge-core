@@ -208,11 +208,14 @@ See [docs/snapshots.md](docs/snapshots.md) for what a script must look like.
 
 ## What works today
 
-Covered by the offline test suite and the demo above:
+Covered by the offline test suite and the demos (`scripts/demo-hop.sh`,
+`scripts/demo-plan.sh`):
 
-- Accounts, placement, holds and the usage log.
+- Accounts, one-off credits, placement by GPU and memory, holds and the usage log.
+- `forge plan`, and the job declaration in `forge.toml`.
 - `local` sessions: run, hop at session limits, pause, resume, wait when no account
-  has time, and `down`.
+  has time, move on when an account cannot start, detach with a background follower,
+  and `down`.
 - Snapshots that resume bit for bit on the same machine, also across data worker counts
   and between CPU and the Apple GPU (see [docs/snapshots.md](docs/snapshots.md)).
 
@@ -225,8 +228,9 @@ Run against live accounts, on free time only:
 
 The Kaggle and Modal adapters are young: two providers, Kaggle's T4 and the Modal GPUs
 in [docs/providers.md](docs/providers.md), and their tests otherwise run against fakes of
-the SDKs. Only the Modal T4 has run against a live account. Kaggle notebooks cannot be paused from
-forge; they save at their own limit. See [docs/providers.md](docs/providers.md).
+the SDKs. Only the Modal T4 has run against a live account, and failover has not met a
+live refusal yet. Kaggle notebooks cannot be paused from forge; they save at their own
+limit. See [docs/providers.md](docs/providers.md).
 
 Not built yet: other providers, running several sessions of one job at once, and
 measured billing (a session counts its wall-clock time).
@@ -235,12 +239,14 @@ measured billing (a session counts its wall-clock time).
 
 ```text
 src/forge/
-  cli.py, loop.py, control.py   the commands and the run loop
+  cli.py, loop.py, control.py   the commands, the run loop and the background follower
+  plan.py                       forge plan: the route before anything runs
   accounts.py, home.py          accounts and where forge keeps its files
   jobs.py, runs.py              jobs, and the journal of each run
   accounting.py                 time left per account, holds and the usage log
-  core/                         pure maths: time left, placement
+  core/                         pure maths: time left, placement, the route
   ledger.py, files.py           the usage log, and files written so a crash cannot break them
+  processes.py                  processes forge starts here, and ending them for certain
   providers/                    local, kaggle and modal, behind one interface
   session.py, runner.py         what runs inside a session, around your script
   snapshot/                     resumable training state
