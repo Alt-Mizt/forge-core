@@ -21,6 +21,7 @@ forge gpus                        # every GPU your accounts offer, and its price
 forge plan train.py --hours 6     # the sessions a run would take, before anything runs
 forge run train.py -- --epochs 3  # runs where there is time; moves when a session ends
 forge run train.py --gpu A100-80GB  # on that GPU only; --gpu alone means any GPU
+forge run train.py --detach       # return at once; forge carries the run in the background
 forge status                      # every run, its state and the account it is on
 forge pause RUN / forge resume RUN [--on ACCOUNT]
 forge logs RUN
@@ -186,7 +187,15 @@ run's journal with the reason and nothing in the usage log, passes over the acco
 15 minutes and tries the next one. `forge accounts` shows "cooling down until HH:MM UTC".
 
 If no account has time left, or none could start, the run waits and forge says which
-accounts failed and when the next allowance resets; `forge resume RUN` continues it. Ctrl-C detaches without stopping the session.
+accounts failed and when the next allowance resets; `forge resume RUN` continues it. Ctrl-C detaches without stopping the session,
+and nothing carries the run on until you resume it.
+
+`forge run ... --detach` starts a background follower instead and returns at once. The
+follower is `forge resume RUN` in its own process, writing to `follow.log` in the run's
+folder, and it carries the run from session to session until it finishes, pauses or
+waits. `forge status` and `forge logs RUN` show where it is; `forge resume RUN` attaches
+a terminal to it too. `forge down` stops the follower first, confirms it is gone, then
+stops the session.
 See [docs/snapshots.md](docs/snapshots.md) for what a script must look like.
 
 ## Safety

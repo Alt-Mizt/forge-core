@@ -1,13 +1,41 @@
-"""The commands that act on existing runs: pause, resume, down, status and logs."""
+"""The commands that act on existing runs: detach, pause, resume, down, status and logs."""
 
 from __future__ import annotations
 
+import signal
+import subprocess
+import sys
 from typing import Any, TextIO
 
 from forge import accounting, accounts, loop, runs
 from forge.home import Home
 from forge.ledger import timestamp
+from forge.processes import alive, end_groups
 from forge.providers import for_account
+
+
+def detach(home: Home, run: str, out: TextIO, on: str | None) -> int:
+    """Start a background follower that carries the run from session to session.
+
+    The follower is ``forge resume RUN`` in its own process group, writing to the run's
+    ``follow.log``. Its process ID goes into the journal before it can read the journal.
+    """
+    path = runs.journal_path(home.runs, run)
+    command = [sys.executable, "-m", "forge.cli", "resume", run]
+    if on is not None:
+        command += ["--on", on]
+    with runs.locked(path), (path.parent / "follow.log").open("ab") as log:
+        follower = subprocess.Popen(
+            command, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True
+        )
+        journal = runs.read(path)
+        journal["follower"] = follower.pid
+        runs.write(path, journal)
+    out.write(
+        f"Run {run} started in the background. "
+        f"forge status, forge logs {run}, forge resume {run} to attach.\n"
+    )
+    return 0
 
 
 def pause(home: Home, run: str, out: TextIO) -> int:
@@ -46,8 +74,10 @@ def down(home: Home, run: str | None, out: TextIO) -> int:
     names = [run] if run else [journal["run"] for journal in runs.all_journals(home.runs)]
     for name in names:
         path = runs.journal_path(home.runs, name)
+        _stop_follower(runs.read(path), out)
         with runs.locked(path):
             journal = runs.read(path)
+            journal.pop("follower", None)
             session = runs.active(journal)
             if session is not None:
                 _stop(home, journal, session, out)
@@ -95,6 +125,28 @@ def logs(home: Home, run: str) -> str:
             provider = for_account(account, home.state / "sessions")
             parts.append(provider.logs(account, session["handle"]))
     return "".join(parts)
+
+
+def _stop_follower(journal: dict[str, Any], out: TextIO) -> None:
+    """End the run's background follower, if one still runs, and confirm it is gone.
+
+    A process ID can be reused once its process has ended, so only a process that is
+    still this run's ``forge resume`` is ended.
+    """
+    pid = journal.get("follower")
+    if pid is None or not alive(pid) or not _follows(pid, journal["run"]):
+        return
+    if not end_groups([pid], signal.SIGTERM):
+        raise ValueError(f"The follower of {journal['run']} (process {pid}) has not stopped.")
+    out.write(f"{journal['run']}: its background follower stopped.\n")
+
+
+def _follows(pid: int, run: str) -> bool:
+    """Whether process ``pid`` is ``forge resume`` for this run, by its command line."""
+    shown = subprocess.run(
+        ["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True, check=False
+    )
+    return f"forge.cli resume {run}" in shown.stdout
 
 
 def _stop(home: Home, journal: dict[str, Any], session: dict[str, Any], out: TextIO) -> None:

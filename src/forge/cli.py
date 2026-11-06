@@ -165,6 +165,8 @@ def _run(home: Home, options: argparse.Namespace) -> int:
     job = jobs.describe(options.script, options.args, options.requirements)
     name = options.name or runs.name_for(options.script, accounting.now())
     loop.start(home, job, _request(options, job), name)
+    if options.detach:
+        return control.detach(home, name, sys.stdout, options.on)
     sys.stdout.write(f"Run {name} started.\n")
     return loop.follow(home, name, sys.stdout, options.on)
 
@@ -313,6 +315,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     _job_options(run)
     run.add_argument("--name", help="A name for the run.")
+    run.add_argument(
+        "--detach", action="store_true", help="Return at once; forge follows it in the background."
+    )
     planner = commands.add_parser(
         "plan", help="Show the sessions a run would take, without starting anything."
     )

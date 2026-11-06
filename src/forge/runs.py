@@ -39,6 +39,7 @@ STARTING, ACTIVE, RECORDED = "starting", "active", "recorded"
 #   request {seconds, gpu, memory_gb}, and sessions: a list with one entry per session:
 #   number, account, gpu, handle, phase, start, seconds, hold (amount held, or null),
 #   and once ended: end, outcome, and for a session that could not start, reason.
+#   While a background follower carries the run: follower, its process ID.
 
 
 def folder(runs: Path, run: str) -> Path:

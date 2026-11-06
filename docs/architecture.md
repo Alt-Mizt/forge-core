@@ -34,9 +34,10 @@ flowchart TD
 | `forge.core` | Time left on an allowance, seconds-to-allowance conversion, placement, and the route a job would take (`core.route`, placement run forward). Pure functions; the time is passed in. |
 | `forge.ledger` | The usage log: one line per recorded session, each hashing the line before. |
 | `forge.files` | Atomic writes, synced appends and lock files, for every file forge keeps. |
+| `forge.processes` | Whether a process forge started still runs, and ending its process group for certain. |
 | `forge.accounting` | Connects accounts to the usage log and the run journals: time left per account, the hold for a session, recording it. |
 | `forge.runs` | The run journal, written before every outside action. A running session's hold is a field in it. |
-| `forge.loop`, `forge.control` | The run loop, and the commands that act on existing runs. |
+| `forge.loop`, `forge.control` | The run loop, and the commands that act on existing runs, including the background follower of a detached run. |
 | `forge.plan` | `forge plan`: reads the accounts once, runs `core.route` and prints the sessions. Starts, holds and writes nothing. |
 | `forge.providers` | The provider interface and the local, Kaggle and Modal adapters. |
 | `forge.session`, `forge.runner` | What runs on the session machine: the session runner and the wrapper around your script. |

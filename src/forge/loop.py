@@ -7,6 +7,7 @@ on the next account from its snapshot; a finished one hands back its outputs.
 
 from __future__ import annotations
 
+import os
 import shutil
 import time
 import zipfile
@@ -65,8 +66,22 @@ def follow(home: Home, run: str, out: TextIO, on: str | None = None) -> int:
     """Drive the run until it finishes, fails, pauses or has nowhere to go; return a status.
 
     Several forge commands can follow one run at once. Starting a session and closing one
-    each happen under the run's lock, on a freshly read journal, so each happens once.
+    each happen under the run's lock, on a freshly read journal, so each happens once. A
+    background follower takes its own process ID out of the journal when it is done.
     """
+    path = runs.journal_path(home.runs, run)
+    try:
+        return _follow(home, run, out, on)
+    finally:
+        with runs.locked(path):
+            journal = runs.read(path)
+            if journal.get("follower") == os.getpid():
+                del journal["follower"]
+                runs.write(path, journal)
+
+
+def _follow(home: Home, run: str, out: TextIO, on: str | None) -> int:
+    """The loop ``follow`` runs: close the session that ended, start the next, repeat."""
     path = runs.journal_path(home.runs, run)
     while True:
         with runs.locked(path):

@@ -6,22 +6,18 @@ session runner enforces the hard time limit, so it holds even when forge is not 
 
 from __future__ import annotations
 
-import contextlib
 import os
 import shutil
 import signal
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 from forge.accounts import Account
 from forge.jobs import plain_version
+from forge.processes import alive, end_groups
 from forge.providers import State, state_from_exit
 from forge.providers.bundle import SessionSpec, build, unpack
-
-STOP_WAIT_SECONDS = 10
-POLL_SECONDS = 0.1
 
 
 class Local:
@@ -60,7 +56,7 @@ class Local:
         out = self.sessions / handle / "out"
         if (out / "exit_code").exists():
             return state_from_exit(int((out / "exit_code").read_text()))
-        if _alive(_pid(self.sessions / handle / "session.pid")):
+        if alive(_pid(self.sessions / handle / "session.pid")):
             return State.RUNNING
         return State.FAILED
 
@@ -92,18 +88,8 @@ class Local:
         del account
         folder = self.sessions / handle
         stored = (_pid(folder / "out" / "runner.pid"), _pid(folder / "session.pid"))
-        pids = [pid for pid in stored if pid is not None]
-        for pid in pids:
-            if _alive(pid):
-                # Each process leads its own group, so this also ends any data workers.
-                with contextlib.suppress(ProcessLookupError):
-                    os.killpg(pid, signal.SIGKILL)
-        deadline = time.monotonic() + STOP_WAIT_SECONDS
-        while any(_alive(pid) for pid in pids):
-            if time.monotonic() > deadline:
-                return False
-            time.sleep(POLL_SECONDS)
-        return True
+        # Each process leads its own group, so this also ends any data workers.
+        return end_groups([pid for pid in stored if pid is not None], signal.SIGKILL)
 
 
 def _require_torch(version: str) -> None:
@@ -121,20 +107,3 @@ def _require_torch(version: str) -> None:
 def _pid(path: Path) -> int | None:
     """The process ID stored in ``path``, if the file exists."""
     return int(path.read_text()) if path.exists() else None
-
-
-def _alive(pid: int | None) -> bool:
-    """Whether a process still runs, reaping it first if it is our own finished child."""
-    if pid is None:
-        return False
-    try:
-        finished, _ = os.waitpid(pid, os.WNOHANG)
-        if finished:
-            return False
-    except ChildProcessError:
-        pass
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    return True
