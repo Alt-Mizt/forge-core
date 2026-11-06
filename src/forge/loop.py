@@ -90,24 +90,69 @@ def _begin(
     """Choose an account and start the next session, or mark the run as waiting.
 
     Placement and the hold happen under one lock for all runs, so two runs that start at
-    the same moment cannot both plan on the same free time.
+    the same moment cannot both plan on the same free time. An account that cannot start
+    the session cools down, and the next account is tried.
     """
     known = accounts.load(home.accounts)
     path = _journal_path(home, journal)
-    with files.locked(home.placing):
-        placement = _place(home, journal, known, on)
-        if placement is None:
-            _wait(home, journal, known, out)
-            return None
-        account = accounts.find(known, placement.account)
-        session = _new_session(journal, placement)
-        session["hold"] = accounting.hold(account, session["gpu"], session["seconds"])
-        runs.write(path, journal)
-    out.write(f"Session {session['number']} on {account.name} ({_limit(placement)}).\n")
-    _provider(home, account).start(account, _spec(home, journal, session))
-    session["phase"] = runs.ACTIVE
-    runs.write(path, journal)
-    return session
+    failures: list[str] = []
+    while True:
+        with files.locked(home.placing):
+            placement = _place(home, journal, known, on)
+            if placement is None:
+                _wait(home, journal, known, out, failures)
+                return None
+            account = accounts.find(known, placement.account)
+            session = _new_session(journal, placement)
+            session["hold"] = accounting.hold(account, session["gpu"], session["seconds"])
+            runs.write(path, journal)
+        out.write(f"Session {session['number']} on {account.name} ({_limit(placement)}).\n")
+        reason = _start(home, journal, account, session)
+        if reason is None:
+            session["phase"] = runs.ACTIVE
+            runs.write(path, journal)
+            return session
+        out.write(f"{account.name} could not start a session: {reason}. Trying the next account.\n")
+        failures.append(f"{account.name} ({reason})")
+        on = None
+
+
+def _start(
+    home: Home, journal: dict[str, Any], account: Account, session: dict[str, Any]
+) -> str | None:
+    """Start the session; if the provider refuses, close it and return why, else None.
+
+    Whatever did start is stopped first. A session the provider still shows running keeps
+    its hold, and the refusal is raised as before.
+    """
+    spec = _spec(home, journal, session)
+    provider = _provider(home, account)
+    try:
+        provider.start(account, spec)
+    except ValueError as error:
+        if not _nothing_left(provider, account, session["handle"]):
+            raise
+        reason = str(error).splitlines()[0] if str(error) else type(error).__name__
+        reason = reason.removeprefix(f"{account.name}: ").rstrip(".")
+        session["end"] = runs.now_text()
+        session["outcome"] = runs.FAILED
+        session["reason"] = reason
+        session["phase"] = runs.RECORDED
+        runs.write(_journal_path(home, journal), journal)
+        accounting.cool_down(home, account.name, accounting.now())
+        return reason
+    return None
+
+
+def _nothing_left(provider: Provider, account: Account, handle: str) -> bool:
+    """Stop what a failed start left behind; False only if the provider shows it running.
+
+    A provider that cannot find the session at all has nothing running for it.
+    """
+    try:
+        return provider.stop(account, handle)
+    except ValueError:
+        return True
 
 
 def _place(
@@ -213,10 +258,18 @@ def _end(home: Home, journal: dict[str, Any], number: int, state: State) -> None
     runs.write(_journal_path(home, journal), journal)
 
 
-def _wait(home: Home, journal: dict[str, Any], known: list[Account], out: TextIO) -> None:
-    """Mark the run as waiting and say when free time comes back."""
+def _wait(
+    home: Home, journal: dict[str, Any], known: list[Account], out: TextIO, failures: list[str]
+) -> None:
+    """Mark the run as waiting and say why: which accounts failed, when free time returns."""
     journal["state"] = runs.WAITING
     runs.write(_journal_path(home, journal), journal)
+    if failures:
+        minutes = accounting.COOLDOWN_SECONDS // 60
+        out.write(
+            f"No account could start this run: {'; '.join(failures)}. "
+            f"Each is passed over for {minutes} minutes.\n"
+        )
     reset = next_reset(accounting.candidates(home, known, accounting.now()))
     when = f" The next allowance resets at {reset.isoformat()}." if reset else ""
     out.write(f"No account has time for this run now.{when}\n")

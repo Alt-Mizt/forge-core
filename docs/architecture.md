@@ -57,6 +57,15 @@ plan on the same free time.
 and on this machine the session runner, end a session at its limit even if forge has
 crashed or been closed. The job is asked to save a snapshot before that limit.
 
+**Spend first what you lose first.** Free time is placed where it would be lost soonest:
+a recurring allowance by its next reset, a one-off credit by its expiry, a credit that
+never expires last.
+
+**A start that fails moves on.** When a provider refuses to start a session, forge stops
+whatever did start, closes the session in the journal under the run's lock with its
+reason and no usage, so its hold ends, and passes over the account for
+`accounting.COOLDOWN_SECONDS`. A session the provider still shows running keeps its hold.
+
 **Record only after confirmed shutdown.** A session goes into the usage log only after
 its provider confirms it stopped, and only then does its hold end. An unconfirmed
 shutdown keeps the hold.

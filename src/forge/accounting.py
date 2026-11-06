@@ -2,24 +2,28 @@
 
 Before a session starts, its whole possible length is held in its run's journal, so two
 runs cannot plan on the same free time. When it ends, the time it took goes into the usage
-log, and the hold ends with the session.
+log, and the hold ends with the session. An account that could not start a session cools
+down for a while, so placement tries the others first.
 """
 
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from forge import ledger, runs
+from forge import files, ledger, runs
 from forge.accounts import Account
 from forge.core.placement import Candidate
 from forge.core.quota import Remaining, Unit, Use
 from forge.core.quota import remaining as time_left
 from forge.core.usage import amount_for
 from forge.home import Home
+
+# How long an account that could not start a session is passed over.
+COOLDOWN_SECONDS = 15 * 60
 
 
 def remaining(home: Home, accounts: list[Account], now: datetime) -> dict[str, Remaining]:
@@ -39,9 +43,29 @@ def remaining(home: Home, accounts: list[Account], now: datetime) -> dict[str, R
 def candidates(home: Home, accounts: list[Account], now: datetime) -> list[Candidate]:
     """Describe every account for placement: health, whether busy, and time left."""
     left = remaining(home, accounts, now)
-    failed = _failed_checks(home)
+    cooling = {name for name, until in cooldowns(home).items() if until > now}
+    unusable = _failed_checks(home) | cooling
     busy = {session["account"] for session in _active_sessions(home)}
-    return [_candidate(account, left.get(account.name), failed, busy) for account in accounts]
+    return [_candidate(account, left.get(account.name), unusable, busy) for account in accounts]
+
+
+def cooldowns(home: Home) -> dict[str, datetime]:
+    """When each account that could not start a session may be tried again."""
+    if not home.cooldowns.exists():
+        return {}
+    stored = json.loads(home.cooldowns.read_text())
+    return {name: ledger.timestamp(until) for name, until in stored.items()}
+
+
+def cool_down(home: Home, account: str, now: datetime) -> datetime:
+    """Pass over ``account`` for ``COOLDOWN_SECONDS`` from ``now``; return when it ends."""
+    until = now + timedelta(seconds=COOLDOWN_SECONDS)
+    with files.locked(home.cooldowns.with_name("cooldowns.lock")):
+        stored = {name: moment.isoformat() for name, moment in cooldowns(home).items()}
+        stored[account] = until.isoformat()
+        encoded = json.dumps(stored, indent=1, sort_keys=True) + "\n"
+        files.write_atomically(home.cooldowns, encoded.encode())
+    return until
 
 
 def hold(account: Account, gpu: str, seconds: int | None) -> str | None:
@@ -109,7 +133,7 @@ def _amount(account: Account, gpu: str, seconds: int) -> Decimal:
 
 
 def _candidate(
-    account: Account, left: Remaining | None, failed: set[str], busy: set[str]
+    account: Account, left: Remaining | None, unusable: set[str], busy: set[str]
 ) -> Candidate:
     """Placement's view of one account."""
     facts = account.facts
@@ -121,7 +145,7 @@ def _candidate(
         name=account.name,
         local=account.provider == "local",
         gpus=account.gpus,
-        usable=account.name not in failed,
+        usable=account.name not in unusable,
         busy=facts.one_session_at_a_time and account.name in busy,
         session_limit=account.session_limit,
         unit=account.unit if left is not None else None,

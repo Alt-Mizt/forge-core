@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -83,19 +83,27 @@ def _accounts(home: Home, options: argparse.Namespace) -> int:
     """Print each account, its device, the free time it has left and when that resets."""
     del options
     known = accounts.load(home.accounts)
-    left = accounting.remaining(home, known, accounting.now())
+    now = accounting.now()
+    left = accounting.remaining(home, known, now)
     checks = json.loads(home.checks.read_text()) if home.checks.exists() else {}
+    cooling = {name: until for name, until in accounting.cooldowns(home).items() if until > now}
     sys.stdout.write(
-        f"{'Account':<12}{'Provider':<10}{'Free left':>14}  {'Resets (UTC)':<19}{'Check':<13}GPUs\n"
+        f"{'Account':<12}{'Provider':<10}{'Free left':>14}  {'Resets (UTC)':<19}{'Check':<30}GPUs\n"
     )
     for account in known:
-        sys.stdout.write(_account_row(account, left.get(account.name), checks.get(account.name)))
+        result = _check_result(checks.get(account.name), cooling.get(account.name))
+        sys.stdout.write(_account_row(account, left.get(account.name), result))
     return 0
 
 
-def _account_row(
-    account: accounts.Account, left: Remaining | None, check: dict[str, object] | None
-) -> str:
+def _check_result(check: dict[str, object] | None, cooling: datetime | None) -> str:
+    """The check column: a cooldown, else the last check's result."""
+    if cooling is not None:
+        return f"cooling down until {cooling.strftime('%H:%M')} UTC"
+    return "not checked" if check is None else ("ok" if check["ok"] else "failed")
+
+
+def _account_row(account: accounts.Account, left: Remaining | None, result: str) -> str:
     """One line of ``forge accounts``."""
     gpus = ", ".join(gpu.name for gpu in account.gpus)
     free, resets = "unlimited", "-"
@@ -105,8 +113,7 @@ def _account_row(
             resets = left.resets_at.strftime("%Y-%m-%d %H:%M")
         elif left.expires is not None:
             resets = f"expires {left.expires.date().isoformat()}"
-    result = "not checked" if check is None else ("ok" if check["ok"] else "failed")
-    return f"{account.name:<12}{account.provider:<10}{free:>14}  {resets:<19}{result:<13}{gpus}\n"
+    return f"{account.name:<12}{account.provider:<10}{free:>14}  {resets:<19}{result:<30}{gpus}\n"
 
 
 def _gpus(home: Home, options: argparse.Namespace) -> int:

@@ -5,13 +5,15 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
-from forge import accounts, control, jobs, loop, runs
+from forge import accounting, accounts, control, jobs, loop, runs
 from forge.core.placement import Request
 from forge.home import Home
+from forge.providers.local import Local
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "examples/tiny/train.py"
@@ -117,6 +119,53 @@ def test_down_stops_a_live_session_and_records_it(home):
     assert journal["state"] == runs.STOPPED
     assert journal["sessions"][-1]["phase"] == runs.RECORDED
     assert len(home.usage.read_text().splitlines()) == 1
+
+
+def test_an_account_that_cannot_start_cools_down_and_the_run_moves_on(home, monkeypatch):
+    add_local(home, "first", "second", session_limit=None)
+    start = Local.start
+
+    def refuse_first(self, account, spec):
+        if account.name == "first":
+            raise ValueError("first: the local start call failed.\n  details")
+        start(self, account, spec)
+
+    monkeypatch.setattr(Local, "start", refuse_first)
+    loop.start(home, jobs.describe(SCRIPT, []), Request(), "failover")
+    out = io.StringIO()
+    assert loop.follow(home, "failover", out) == 0
+    assert "first could not start a session: the local start call failed. Trying" in out.getvalue()
+    journal = runs.read(home.runs / "failover" / "journal.json")
+    failed, finished = journal["sessions"]
+    assert (failed["account"], failed["outcome"]) == ("first", runs.FAILED)
+    assert failed["reason"] == "the local start call failed"
+    assert (finished["account"], finished["outcome"]) == ("second", runs.FINISHED)
+    # Only the session that ran is in the usage log, and no hold is left behind.
+    assert len(home.usage.read_text().splitlines()) == 1
+    assert accounting.holds(home) == {}
+
+    cooling = accounting.cooldowns(home)
+    assert list(cooling) == ["first"]
+    known = accounts.load(home.accounts)
+    now = accounting.now()
+    assert [option.usable for option in accounting.candidates(home, known, now)] == [False, True]
+    later = cooling["first"] + timedelta(seconds=1)
+    assert all(option.usable for option in accounting.candidates(home, known, later))
+
+
+def test_when_every_account_fails_to_start_the_run_waits_and_says_why(home, monkeypatch):
+    add_local(home, "desk")
+
+    def refuse(self, account, spec):
+        del self, account, spec
+        raise ValueError("This run needs torch 9.9.")
+
+    monkeypatch.setattr(Local, "start", refuse)
+    loop.start(home, jobs.describe(SCRIPT, []), Request(), "stuck")
+    out = io.StringIO()
+    assert loop.follow(home, "stuck", out) == 0
+    assert "No account could start this run: desk (This run needs torch 9.9)." in out.getvalue()
+    assert runs.read(home.runs / "stuck" / "journal.json")["state"] == runs.WAITING
 
 
 def wait_for_first_step(progress):

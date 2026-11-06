@@ -34,6 +34,11 @@ class Home:
         return self.state / "checks.json"
 
     @property
+    def cooldowns(self) -> Path:
+        """Accounts that could not start a session lately, and when each may be tried again."""
+        return self.state / "cooldowns.json"
+
+    @property
     def runs(self) -> Path:
         """One folder per run: its journal, job archive, snapshots, logs and outputs."""
         return self.state / "runs"

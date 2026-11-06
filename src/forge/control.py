@@ -84,6 +84,9 @@ def logs(home: Home, run: str) -> str:
     parts = []
     for session in journal["sessions"]:
         parts.append(f"--- session {session['number']} on {session['account']}\n")
+        if "reason" in session:
+            parts.append(f"Could not start: {session['reason']}\n")
+            continue
         saved = folder / "sessions" / str(session["number"]) / "log.txt"
         if saved.exists():
             parts.append(saved.read_text(errors="replace"))

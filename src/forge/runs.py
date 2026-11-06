@@ -30,14 +30,15 @@ RUNNING, WAITING, PAUSED, FINISHED, FAILED, STOPPED = (
     "stopped",
 )
 ENDED_STATES = frozenset({FINISHED, FAILED, STOPPED})
-# Session phases, in order. "recorded" means the usage log has the session and its hold is over.
+# Session phases, in order. "recorded" means the session is closed: the usage log has its
+# time, if it ran at all, and its hold is over.
 STARTING, ACTIVE, RECORDED = "starting", "active", "recorded"
 
 # A journal is a JSON object with these keys:
 #   version, run, state, job {folder, script, args, requirements, digest},
 #   request {seconds, gpu}, and sessions: a list with one entry per session:
 #   number, account, gpu, handle, phase, start, seconds, hold (amount held, or null),
-#   and once ended: end, outcome.
+#   and once ended: end, outcome, and for a session that could not start, reason.
 
 
 def folder(runs: Path, run: str) -> Path:

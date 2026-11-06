@@ -135,8 +135,13 @@ shows "expires 2027-01-31" where other accounts show their reset.
 6. The next session, on the next account, restores the snapshot and carries on. When
    the script finishes, its `outputs/` come back to you.
 
-If no account has time left, the run waits and forge says when the next allowance
-resets; `forge resume RUN` continues it. Ctrl-C detaches without stopping the session.
+If an account cannot start a session (Kaggle refuses the notebook, Modal has no
+capacity, a token is wrong), forge stops whatever did start, closes that session in the
+run's journal with the reason and nothing in the usage log, passes over the account for
+15 minutes and tries the next one. `forge accounts` shows "cooling down until HH:MM UTC".
+
+If no account has time left, or none could start, the run waits and forge says which
+accounts failed and when the next allowance resets; `forge resume RUN` continues it. Ctrl-C detaches without stopping the session.
 See [docs/snapshots.md](docs/snapshots.md) for what a script must look like.
 
 ## Safety
