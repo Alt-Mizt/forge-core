@@ -165,3 +165,14 @@ def test_free_time_lost_first_is_spent_first():
         order.append(placement.account)
         remaining = [option for option in remaining if option.name != placement.account]
     assert order == ["kaggle", "grant", "modal", "forever"]
+
+
+def test_a_gpu_with_too_little_memory_is_passed_over_and_refused_by_name():
+    accounts = [candidate("kaggle"), modal()]
+    placement = choose(accounts, Request(memory_gb=24))
+    assert placement is not None and (placement.account, placement.gpu) == ("modal", "A100-80GB")
+    reason = mismatch([candidate("kaggle")], Request(gpu="T4", memory_gb=24))
+    assert reason == (
+        "No account offers T4 with at least 24 GB: kaggle offers T4 (16 GB). "
+        "See them all with: forge gpus"
+    )

@@ -53,3 +53,33 @@ def test_a_pin_that_contradicts_the_snapshot_refuses_and_says_what_to_pin(tmp_pa
     snapshot = snapshot_with_torch(tmp_path / "snapshot", "2.8.0")
     with pytest.raises(ValueError, match=r"Pin torch==2\.8\.0"):
         jobs.session_torch(job, snapshot, "2.9.0")
+
+
+def test_a_forge_toml_beside_the_script_declares_what_the_job_needs(tmp_path):
+    (tmp_path / "train.py").write_text("")
+    (tmp_path / "forge.toml").write_text('[job]\ngpu = "a100"\nmemory_gb = 24\nhours = 6\n')
+    declaration = jobs.describe(tmp_path / "train.py", []).declaration
+    assert declaration == jobs.Declaration(gpu="a100", memory_gb=24, hours=6.0)
+
+
+def test_without_a_forge_toml_the_job_declares_nothing(tmp_path):
+    (tmp_path / "train.py").write_text("")
+    assert jobs.describe(tmp_path / "train.py", []).declaration == jobs.Declaration()
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("[job]\ngpus = 2\n", "unknown key 'gpus' in \\[job\\]"),
+        ('[run]\ngpu = "T4"\n', "unknown table or key 'run'"),
+        ('[job]\nmemory_gb = "24"\n', "memory_gb must be a whole number"),
+        ("[job]\nhours = 0\n", "hours must be a number above 0"),
+    ],
+)
+def test_a_forge_toml_with_an_unknown_key_or_a_wrong_value_refuses_naming_it(
+    tmp_path, text, message
+):
+    (tmp_path / "train.py").write_text("")
+    (tmp_path / "forge.toml").write_text(text)
+    with pytest.raises(ValueError, match=message):
+        jobs.describe(tmp_path / "train.py", [])

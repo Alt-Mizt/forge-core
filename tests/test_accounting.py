@@ -107,3 +107,17 @@ def test_a_local_account_has_no_allowance_and_holds_nothing(tmp_path):
     [candidate] = accounting.candidates(home, [local], NOW)
     assert candidate.local and candidate.unit is None
     assert [gpu.name for gpu in candidate.gpus] == ["cpu"]
+
+
+def test_the_run_journal_records_the_job_declaration_and_the_request(tmp_path):
+    home = home_with(tmp_path, accounts.new_account("modal"))
+    folder = tmp_path / "job"
+    folder.mkdir()
+    (folder / "train.py").write_text("")
+    (folder / "forge.toml").write_text('[job]\ngpu = "A100-80GB"\nmemory_gb = 40\n')
+    job = jobs.describe(folder / "train.py", [])
+    request = Request(gpu=job.declaration.gpu, memory_gb=job.declaration.memory_gb)
+    loop.start(home, job, request, "declared")
+    journal = runs.read(home.runs / "declared" / "journal.json")
+    assert journal["job"]["declaration"] == {"gpu": "A100-80GB", "memory_gb": 40, "hours": None}
+    assert journal["request"] == {"seconds": None, "gpu": "A100-80GB", "memory_gb": 40}

@@ -35,8 +35,8 @@ ENDED_STATES = frozenset({FINISHED, FAILED, STOPPED})
 STARTING, ACTIVE, RECORDED = "starting", "active", "recorded"
 
 # A journal is a JSON object with these keys:
-#   version, run, state, job {folder, script, args, requirements, digest},
-#   request {seconds, gpu}, and sessions: a list with one entry per session:
+#   version, run, state, job {folder, script, args, requirements, digest, declaration},
+#   request {seconds, gpu, memory_gb}, and sessions: a list with one entry per session:
 #   number, account, gpu, handle, phase, start, seconds, hold (amount held, or null),
 #   and once ended: end, outcome, and for a session that could not start, reason.
 

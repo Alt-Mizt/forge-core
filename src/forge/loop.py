@@ -10,6 +10,7 @@ from __future__ import annotations
 import shutil
 import time
 import zipfile
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -51,8 +52,9 @@ def start(home: Home, job: jobs.Job, request: Request, name: str) -> str:
             "args": job.args,
             "requirements": job.requirements,
             "digest": digest,
+            "declaration": asdict(job.declaration),
         },
-        "request": {"seconds": request.seconds, "gpu": request.gpu},
+        "request": {"seconds": request.seconds, "gpu": request.gpu, "memory_gb": request.memory_gb},
         "sessions": [],
     }
     runs.write(folder / "journal.json", journal)
@@ -165,6 +167,7 @@ def _place(
     request = Request(
         seconds=journal["request"]["seconds"],
         gpu=journal["request"].get("gpu"),
+        memory_gb=journal["request"].get("memory_gb"),
         on=on,
         previous=previous,
     )

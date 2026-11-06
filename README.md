@@ -118,6 +118,22 @@ seconds starting Python and loading the snapshot, so with 10-second sessions the
 above took 6. The plan counts no resets along the way. Without `--hours` it shows the
 next session only.
 
+## Say what the job needs
+
+An optional `forge.toml` beside the script tells `forge run` and `forge plan` what the
+job needs, so you do not repeat it on every command:
+
+```toml
+[job]
+gpu = "a100-80gb"   # the same as --gpu
+memory_gb = 24      # the least GPU memory that fits; smaller GPUs are passed over
+hours = 6           # how long the job runs, for forge plan
+```
+
+Options on the command line win over the file. A key forge does not know refuses, naming
+the key. If no account has a GPU that fits, `forge run` refuses and says what each
+account offers. The run's journal records the declaration under `job`.
+
 ## Plug in an account
 
 **This machine.** `forge add local`. forge uses CUDA or the Apple GPU if torch finds one,

@@ -80,10 +80,13 @@ class Request:
     """What the job asks for: a session length, a GPU, an account, and where it last ran.
 
     ``gpu`` is a GPU's name, ``any`` for any GPU, or None when the CPU will do.
+    ``memory_gb`` is the least GPU memory that fits the job; a GPU whose memory forge does
+    not know never fits it.
     """
 
     seconds: int | None = None
     gpu: str | None = None
+    memory_gb: int | None = None
     on: str | None = None
     previous: str | None = None
 
@@ -152,6 +155,8 @@ def seconds_left(candidate: Candidate, amount: Decimal, gpu: Gpu) -> int:
 
 def _fits(gpu: Gpu, request: Request) -> bool:
     """Whether one GPU is what the request asks for."""
+    if request.memory_gb is not None and gpu.memory_gb < request.memory_gb:
+        return False
     if request.gpu is None:
         return True
     if request.gpu.lower() == ANY:
@@ -210,6 +215,7 @@ def _offers(candidate: Candidate) -> str:
 
 def _wanted(request: Request) -> str:
     """What the request asks for, in words."""
-    if request.gpu is None or request.gpu.lower() == ANY:
-        return "a GPU"
-    return request.gpu
+    wanted = "a GPU" if request.gpu is None or request.gpu.lower() == ANY else request.gpu
+    if request.memory_gb is not None:
+        wanted += f" with at least {request.memory_gb} GB"
+    return wanted

@@ -83,3 +83,31 @@ def test_plan_prints_the_route_and_starts_nothing(monkeypatch, capsys, tmp_path)
     ]
     assert "These 3 sessions cover the job" in printed.out
     assert list((tmp_path / "state" / "runs").iterdir()) == []
+
+
+def job_with_declaration(tmp_path, text):
+    folder = tmp_path / "job"
+    folder.mkdir()
+    (folder / "train.py").write_text("")
+    (folder / "forge.toml").write_text(text)
+    return folder / "train.py"
+
+
+def test_the_command_line_overrides_the_job_declaration(monkeypatch, capsys, tmp_path):
+    forge(monkeypatch, capsys, tmp_path, "add", "modal")
+    script = job_with_declaration(tmp_path, '[job]\ngpu = "h100"\nhours = 2\n')
+    _, declared = forge(monkeypatch, capsys, tmp_path, "plan", str(script))
+    assert declared.out.splitlines()[1].split()[:3] == ["1", "modal", "H100"]
+    assert "cover the job's 2 hours" in declared.out
+    arguments = ("plan", str(script), "--gpu", "t4", "--hours", "3")
+    _, overridden = forge(monkeypatch, capsys, tmp_path, *arguments)
+    assert overridden.out.splitlines()[1].split()[:3] == ["1", "modal", "T4"]
+    assert "cover the job's 3 hours" in overridden.out
+
+
+def test_a_declared_memory_no_account_has_refuses_naming_the_account(monkeypatch, capsys, tmp_path):
+    forge(monkeypatch, capsys, tmp_path, "add", "kaggle", "--credentials", "token")
+    script = job_with_declaration(tmp_path, "[job]\nmemory_gb = 24\n")
+    status, printed = forge(monkeypatch, capsys, tmp_path, "run", str(script))
+    assert status == 1
+    assert "No account offers a GPU with at least 24 GB: kaggle offers T4 (16 GB)." in printed.err

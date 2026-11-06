@@ -84,6 +84,6 @@ def _ending(
         return f"\nThese {len(sessions)} sessions cover the job's {hours:g} hours.\n"
     planned = sum(placement.seconds or 0 for placement in sessions)
     return (
-        f"\nNo account can take the last {seconds - planned} s of the job. "
+        f"\nNo account can take the last {_length(seconds - planned)} of the job. "
         "forge run would wait there until an allowance resets.\n"
     )

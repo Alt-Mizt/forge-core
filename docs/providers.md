@@ -25,7 +25,8 @@ forge passes it to the job as `FORGE_DEVICE`. A local account has no allowance u
 you give it one.
 
 - GPU catalogue: one entry named after the device, `cuda`, `mps` or `cpu`, with no price.
-  `cpu` does not count as a GPU for `--gpu`. forge does not measure the device's memory.
+  `cpu` does not count as a GPU for `--gpu`. forge does not measure the device's memory,
+  so a job that declares `memory_gb` in its `forge.toml` passes over local accounts.
 
 ## kaggle
 

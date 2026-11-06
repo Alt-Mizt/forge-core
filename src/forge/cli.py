@@ -164,17 +164,26 @@ def _run(home: Home, options: argparse.Namespace) -> int:
     """Start a run of a training script and follow it until it finishes or must wait."""
     job = jobs.describe(options.script, options.args, options.requirements)
     name = options.name or runs.name_for(options.script, accounting.now())
-    request = Request(seconds=options.max_seconds, gpu=options.gpu, on=options.on)
-    loop.start(home, job, request, name)
+    loop.start(home, job, _request(options, job), name)
     sys.stdout.write(f"Run {name} started.\n")
     return loop.follow(home, name, sys.stdout, options.on)
 
 
 def _plan(home: Home, options: argparse.Namespace) -> int:
     """Print the sessions a run would take, without starting anything."""
-    jobs.describe(options.script, options.args, options.requirements)
-    request = Request(seconds=options.max_seconds, gpu=options.gpu, on=options.on)
-    return plan.show(home, request, options.hours, sys.stdout)
+    job = jobs.describe(options.script, options.args, options.requirements)
+    hours = options.hours if options.hours is not None else job.declaration.hours
+    return plan.show(home, _request(options, job), hours, sys.stdout)
+
+
+def _request(options: argparse.Namespace, job: jobs.Job) -> Request:
+    """What a run asks placement for: its options, then the job's forge.toml."""
+    return Request(
+        seconds=options.max_seconds,
+        gpu=options.gpu if options.gpu is not None else job.declaration.gpu,
+        memory_gb=job.declaration.memory_gb,
+        on=options.on,
+    )
 
 
 def _status(home: Home, options: argparse.Namespace) -> int:
