@@ -15,7 +15,7 @@ from typing import Any, TextIO
 
 from forge import accounting, accounts, files, jobs, runs
 from forge.accounts import Account
-from forge.core.placement import Placement, Request, choose, next_reset
+from forge.core.placement import Placement, Request, choose, mismatch, next_reset
 from forge.home import Home
 from forge.providers import Provider, State, for_account
 from forge.providers.bundle import SessionSpec
@@ -30,7 +30,14 @@ class Detached(Exception):  # noqa: N818 - a signal for the caller, not an error
 
 
 def start(home: Home, job: jobs.Job, request: Request, name: str) -> str:
-    """Create a run for ``job`` and return its name. Nothing starts until ``follow``."""
+    """Create a run for ``job`` and return its name. Nothing starts until ``follow``.
+
+    Raises:
+        ValueError: When no plugged-in account offers the GPU the request names.
+    """
+    candidates = accounting.candidates(home, accounts.load(home.accounts), accounting.now())
+    if (reason := mismatch(candidates, request)) is not None:
+        raise ValueError(reason)
     folder = runs.folder(home.runs, name)
     folder.mkdir(parents=True)
     digest = jobs.pack(job, folder / "job.zip")
@@ -45,7 +52,7 @@ def start(home: Home, job: jobs.Job, request: Request, name: str) -> str:
             "requirements": job.requirements,
             "digest": digest,
         },
-        "request": {"seconds": request.seconds, "needs_gpu": request.needs_gpu},
+        "request": {"seconds": request.seconds, "gpu": request.gpu},
         "sessions": [],
     }
     runs.write(folder / "journal.json", journal)
@@ -94,7 +101,7 @@ def _begin(
             return None
         account = accounts.find(known, placement.account)
         session = _new_session(journal, placement)
-        session["hold"] = accounting.hold(account, session["seconds"])
+        session["hold"] = accounting.hold(account, session["gpu"], session["seconds"])
         runs.write(path, journal)
     out.write(f"Session {session['number']} on {account.name} ({_limit(placement)}).\n")
     _provider(home, account).start(account, _spec(home, journal, session))
@@ -112,7 +119,7 @@ def _place(
     previous = journal["sessions"][-1]["account"] if journal["sessions"] else None
     request = Request(
         seconds=journal["request"]["seconds"],
-        needs_gpu=journal["request"]["needs_gpu"],
+        gpu=journal["request"].get("gpu"),
         on=on,
         previous=previous,
     )
@@ -125,6 +132,7 @@ def _new_session(journal: dict[str, Any], placement: Placement) -> dict[str, Any
     session = {
         "number": number,
         "account": placement.account,
+        "gpu": placement.gpu,
         "handle": f"forge-{journal['run']}-{number}",
         "phase": runs.STARTING,
         "start": runs.now_text(),
@@ -150,6 +158,7 @@ def _spec(home: Home, journal: dict[str, Any], session: dict[str, Any]) -> Sessi
         requirements=job["requirements"],
         resume=snapshot,
         seconds=session["seconds"],
+        gpu=session["gpu"],
         torch=jobs.session_torch(described, snapshot, _installed_torch()),
     )
 

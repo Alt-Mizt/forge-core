@@ -152,7 +152,7 @@ class FakeSandbox:
         return 0 if self.terminated else None
 
 
-def test_a_modal_session_has_a_gpu_a_timeout_gvisor_and_no_network(monkeypatch):
+def test_a_modal_session_has_the_chosen_gpu_a_timeout_gvisor_and_no_network(monkeypatch):
     created = []
     monkeypatch.setattr(modal.App, "lookup", lambda *_args, **_kwargs: SimpleNamespace(app_id="a"))
     image = SimpleNamespace(pip_install=lambda *packages: packages)
@@ -167,12 +167,15 @@ def test_a_modal_session_has_a_gpu_a_timeout_gvisor_and_no_network(monkeypatch):
         "handle": "forge-run-1",
         "bundle": "YnVuZGxl",
         "seconds": 300,
+        "gpu": "A100-80GB",
         "torch": "2.8.0",
         "requirements": [],
     }
     assert modal_api.Client().invoke("start", request) == {"id": "sb-1"}
     options = created[0].options
-    assert options["gpu"] == "T4" and options["runtime"] == "gvisor"
+    assert options["gpu"] == "A100-80GB" and options["runtime"] == "gvisor"
+    # Capped CPU and memory are what bound a session's price.
+    assert options["cpu"] == (0.125, 4.0) and options["memory"] == (128, 32 * 1024)
     assert options["block_network"] is True
     assert options["timeout"] == 300 + modal_api.COLLECT_SECONDS
     assert "torch==2.8.0" in options["image"]

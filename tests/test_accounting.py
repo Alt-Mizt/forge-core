@@ -1,5 +1,6 @@
 """Holds come from the run journals, recorded sessions from the usage log, and they add up."""
 
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -31,11 +32,14 @@ def start_session(home, account, seconds, hold=None):
         {
             "number": 1,
             "account": account.name,
+            "gpu": account.gpus[0].name,
             "handle": f"forge-{name}-1",
             "phase": runs.ACTIVE,
             "start": "2026-10-07T11:00:00Z",
             "seconds": seconds,
-            "hold": hold if hold is not None else accounting.hold(account, seconds),
+            "hold": hold
+            if hold is not None
+            else accounting.hold(account, account.gpus[0].name, seconds),
         }
     )
     runs.write(path, journal)
@@ -72,16 +76,34 @@ def test_recorded_use_never_exceeds_what_was_held(tmp_path):
 
 def test_modal_holds_the_collection_time_too_and_counts_dollars(tmp_path):
     modal = accounts.new_account("modal")
-    assert accounting.hold(modal, 150) == "0.270"  # (150 + 120) seconds at $0.001
+    # A T4 sandbox: $0.000164 for the GPU, plus 4 cores at $0.00003942 and 32 GiB at
+    # $0.00000667, is $0.00053512 a second; (150 + 120) seconds of it is $0.1444824.
+    assert accounting.hold(modal, "T4", 150) == "0.14448240"
     home = home_with(tmp_path, modal)
     start_session(home, modal, 150)
-    assert accounting.remaining(home, [modal], NOW)["modal"].amount == Decimal("29.730")
+    assert accounting.remaining(home, [modal], NOW)["modal"].amount == Decimal("29.85551760")
+
+
+def test_an_a100_session_holds_an_hour_at_the_a100_price_and_records_the_a100(tmp_path):
+    modal = accounts.new_account("modal")
+    # $0.000694 for the GPU plus $0.00037112 for the sandbox is $0.00106512 a second;
+    # an hour plus the 120 s to collect results is 3720 s, so $3.9622464 is held.
+    assert accounting.hold(modal, "A100-80GB", HOUR) == "3.96224640"
+    home = home_with(tmp_path, modal)
+    journal = start_session(home, modal, HOUR, hold=accounting.hold(modal, "A100-80GB", HOUR))
+    journal["sessions"][0]["gpu"] = "A100-80GB"
+    journal["sessions"][0]["end"] = "2026-10-07T11:30:00Z"
+    accounting.record_session(home, journal, modal)
+    line = json.loads(home.usage.read_text())
+    # Half an hour, 1800 s, at $0.00106512.
+    assert (line["gpu"], line["gpu_count"], line["amount"]) == ("A100-80GB", 1, "1.91721600")
 
 
 def test_a_local_account_has_no_allowance_and_holds_nothing(tmp_path):
     local = accounts.new_account("local", device="cpu")
     home = home_with(tmp_path, local)
-    assert accounting.hold(local, 10) is None
+    assert accounting.hold(local, "cpu", 10) is None
     assert accounting.remaining(home, [local], NOW) == {}
     [candidate] = accounting.candidates(home, [local], NOW)
-    assert candidate.local and candidate.free_seconds is None and not candidate.has_gpu
+    assert candidate.local and candidate.unit is None
+    assert [gpu.name for gpu in candidate.gpus] == ["cpu"]

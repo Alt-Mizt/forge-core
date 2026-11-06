@@ -17,7 +17,9 @@ forge add kaggle                  # plug in an account
 forge add modal
 forge add local                   # this machine
 forge accounts                    # what is plugged in and how much free time is left
+forge gpus                        # every GPU your accounts offer, and its price
 forge run train.py -- --epochs 3  # runs where there is time; moves when a session ends
+forge run train.py --gpu A100-80GB  # on that GPU only; --gpu alone means any GPU
 forge status                      # every run, its state and the account it is on
 forge pause RUN / forge resume RUN [--on ACCOUNT]
 forge logs RUN
@@ -42,9 +44,9 @@ two accounts to finish, and its final weights must match an uninterrupted run. H
 sessions it takes depends on how quickly the machine starts Python; this is one run:
 
 ```text
-Account     Provider  GPU        Free left  Resets (UTC)     Check
-first       local     cpu        unlimited  -                not checked
-second      local     cpu        unlimited  -                not checked
+Account     Provider       Free left  Resets (UTC)     Check        GPUs
+first       local          unlimited  -                not checked  cpu
+second      local          unlimited  -                not checked  cpu
 Run hop started.
 Session 1 on first (up to 10 s).
 Snapshot saved after step 6 in 0.016s.
@@ -110,8 +112,11 @@ cap of 0. `--allowance` and `--paid-cap` change them.
 
 1. forge packs the script's folder (leaving out caches, environments and `outputs/`).
 2. It picks an account: a local GPU that fits first, then free time that resets
-   soonest, then paid time, only where you set a paid cap. The session gets the
-   shortest of your `--max-seconds`, the account's session limit and the time left.
+   soonest, then paid time, only where you set a paid cap, cheapest GPU first. On that
+   account the session uses the cheapest GPU that fits: the one `--gpu NAME` names,
+   any GPU for `--gpu`, or the CPU too when you give no `--gpu`. The session gets the
+   shortest of your `--max-seconds`, the account's session limit and the time left on
+   that GPU.
 3. It holds that time against the account, then starts the session with a limit the
    provider enforces itself.
 4. Inside the session, a wrapper runs your script unchanged. Shortly before the limit
@@ -151,8 +156,9 @@ Run against live accounts, on free time only:
 - `forge pause` from a second terminal while `forge run` is attached to a Modal session,
   then `forge resume`.
 
-The Kaggle and Modal adapters are young: two providers, one GPU type each, and their
-tests otherwise run against fakes of the SDKs. Kaggle notebooks cannot be paused from
+The Kaggle and Modal adapters are young: two providers, Kaggle's T4 and the Modal GPUs
+in [docs/providers.md](docs/providers.md), and their tests otherwise run against fakes of
+the SDKs. Only the Modal T4 has run against a live account. Kaggle notebooks cannot be paused from
 forge; they save at their own limit. See [docs/providers.md](docs/providers.md).
 
 Not built yet: other providers, running several sessions of one job at once, and

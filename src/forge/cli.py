@@ -14,7 +14,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from forge import accounting, accounts, control, jobs, loop, runs
-from forge.core.placement import Request
+from forge.core.placement import ANY, Gpu, Request
 from forge.core.quota import Remaining, Unit
 from forge.home import Home, locate
 from forge.providers import for_account
@@ -22,6 +22,7 @@ from forge.providers import for_account
 # Errors a command turns into a refusal instead of a traceback.
 FAILURES = (OSError, InvalidOperation, KeyError, TypeError, RuntimeError)
 DETACHED = 130
+HOUR = 3600
 
 
 def main() -> int:
@@ -83,7 +84,7 @@ def _accounts(home: Home, options: argparse.Namespace) -> int:
     left = accounting.remaining(home, known, accounting.now())
     checks = json.loads(home.checks.read_text()) if home.checks.exists() else {}
     sys.stdout.write(
-        f"{'Account':<12}{'Provider':<10}{'GPU':<6}{'Free left':>14}  {'Resets (UTC)':<17}Check\n"
+        f"{'Account':<12}{'Provider':<10}{'Free left':>14}  {'Resets (UTC)':<17}{'Check':<13}GPUs\n"
     )
     for account in known:
         sys.stdout.write(_account_row(account, left.get(account.name), checks.get(account.name)))
@@ -94,15 +95,36 @@ def _account_row(
     account: accounts.Account, left: Remaining | None, check: dict[str, object] | None
 ) -> str:
     """One line of ``forge accounts``."""
-    gpu = account.device if account.provider == "local" else account.facts.gpu
+    gpus = ", ".join(gpu.name for gpu in account.gpus)
     free, resets = "unlimited", "-"
     if left is not None and account.unit is not None:
         free = f"{max(left.amount - account.paid_cap, Decimal(0)):.2f} {_unit(account)}"
         resets = left.resets_at.strftime("%Y-%m-%d %H:%M")
     result = "not checked" if check is None else ("ok" if check["ok"] else "failed")
-    return (
-        f"{account.name:<12}{account.provider:<10}{gpu or '-':<6}{free:>14}  {resets:<17}{result}\n"
-    )
+    return f"{account.name:<12}{account.provider:<10}{free:>14}  {resets:<17}{result:<13}{gpus}\n"
+
+
+def _gpus(home: Home, options: argparse.Namespace) -> int:
+    """Print every GPU the plugged-in accounts offer: its memory, where, and its price."""
+    del options
+    offers: dict[str, list[tuple[accounts.Account, Gpu]]] = {}
+    for account in accounts.load(home.accounts):
+        for gpu in account.gpus:
+            offers.setdefault(gpu.name, []).append((account, gpu))
+    sys.stdout.write(f"{'GPU':<11}{'Memory':>7}  {'Accounts':<24}Price per hour\n")
+    for name, offered in offers.items():
+        memory = f"{offered[0][1].memory_gb} GB" if offered[0][1].memory_gb else "-"
+        where = ", ".join(account.name for account, _ in offered)
+        prices = ", ".join(_hourly(gpu) for _, gpu in offered)
+        sys.stdout.write(f"{name:<11}{memory:>7}  {where:<24}{prices}\n")
+    return 0
+
+
+def _hourly(gpu: Gpu) -> str:
+    """A GPU's price per hour in words: free, or dollars to the cent."""
+    if gpu.usd_per_second == 0:
+        return "free"
+    return f"${gpu.usd_per_second * HOUR:.2f}"
 
 
 def _check(home: Home, options: argparse.Namespace) -> int:
@@ -129,7 +151,7 @@ def _run(home: Home, options: argparse.Namespace) -> int:
     """Start a run of a training script and follow it until it finishes or must wait."""
     job = jobs.describe(options.script, options.args, options.requirements)
     name = options.name or runs.name_for(options.script, accounting.now())
-    request = Request(seconds=options.max_seconds, needs_gpu=options.gpu)
+    request = Request(seconds=options.max_seconds, gpu=options.gpu, on=options.on)
     loop.start(home, job, request, name)
     sys.stdout.write(f"Run {name} started.\n")
     return loop.follow(home, name, sys.stdout, options.on)
@@ -217,6 +239,7 @@ COMMANDS = {
     "add": _add,
     "remove": _remove,
     "accounts": _accounts,
+    "gpus": _gpus,
     "check": _check,
     "run": _run,
     "status": _status,
@@ -242,6 +265,7 @@ def _parser() -> argparse.ArgumentParser:
     add.add_argument("--device", choices=("cuda", "mps", "cpu"), help="For local accounts.")
     commands.add_parser("remove", help="Unplug an account.").add_argument("name")
     commands.add_parser("accounts", help="List accounts and the free time they have left.")
+    commands.add_parser("gpus", help="List the GPUs your accounts offer, with their prices.")
     check = commands.add_parser("check", help="Check that accounts' credentials work.")
     check.add_argument("name", nargs="?")
     run = commands.add_parser(
@@ -252,7 +276,13 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--on", help="Start on this account.")
     run.add_argument("--name", help="A name for the run.")
     run.add_argument("--max-seconds", type=int, help="Longest session this run may use.")
-    run.add_argument("--gpu", action="store_true", help="Only run on accounts with a GPU.")
+    run.add_argument(
+        "--gpu",
+        nargs="?",
+        const=ANY,
+        metavar="NAME",
+        help="Run on this GPU (see forge gpus), or on any GPU when no name is given.",
+    )
     run.add_argument("--requirements", type=Path, help="Extra pip requirements for clouds.")
     commands.add_parser("status", help="List runs.")
     for name, summary in (("pause", "Pause a run at a snapshot."), ("logs", "Print a run's logs.")):

@@ -18,7 +18,7 @@ from forge.accounts import Account
 from forge.core.placement import Candidate
 from forge.core.quota import Remaining, Unit, Use
 from forge.core.quota import remaining as time_left
-from forge.core.usage import amount_for, seconds_for
+from forge.core.usage import amount_for
 from forge.home import Home
 
 
@@ -44,14 +44,14 @@ def candidates(home: Home, accounts: list[Account], now: datetime) -> list[Candi
     return [_candidate(account, left.get(account.name), failed, busy) for account in accounts]
 
 
-def hold(account: Account, seconds: int | None) -> str | None:
-    """The amount a session of ``seconds`` may use at most, as text for the run's journal.
+def hold(account: Account, gpu: str, seconds: int | None) -> str | None:
+    """The amount a session of ``seconds`` on ``gpu`` may use at most, as journal text.
 
     None when the account has no allowance, or when the session has no time limit.
     """
     if account.limit() is None or seconds is None:
         return None
-    return str(_amount(account, seconds + account.facts.extra_seconds))
+    return str(_amount(account, gpu, seconds + account.facts.extra_seconds))
 
 
 def holds(home: Home) -> dict[str, Decimal]:
@@ -83,14 +83,15 @@ def now() -> datetime:
 def _entry(journal: dict[str, Any], session: dict[str, Any], account: Account) -> dict[str, Any]:
     """One usage log line for an ended session."""
     elapsed = (ledger.timestamp(session["end"]) - ledger.timestamp(session["start"])).seconds
-    amount = _amount(account, max(elapsed, 1))
+    gpu = account.gpu(session["gpu"])
+    amount = _amount(account, gpu.name, max(elapsed, 1))
     if session.get("hold"):
         amount = min(amount, Decimal(session["hold"]))
     return {
         "session_id": session["handle"],
         "account": account.name,
-        "gpu": account.device or account.facts.gpu,
-        "gpu_count": account.facts.gpu_count,
+        "gpu": gpu.name,
+        "gpu_count": gpu.count,
         "start": session["start"],
         "end": session["end"],
         "unit": (account.unit or Unit.GPU_HOURS).value,
@@ -101,12 +102,10 @@ def _entry(journal: dict[str, Any], session: dict[str, Any], account: Account) -
     }
 
 
-def _amount(account: Account, seconds: int) -> Decimal:
-    """What ``seconds`` cost on this account; local time is counted in hours of the device."""
-    facts = account.facts
-    return amount_for(
-        seconds, account.unit or Unit.GPU_HOURS, facts.gpu_count, facts.usd_per_second
-    )
+def _amount(account: Account, gpu: str, seconds: int) -> Decimal:
+    """What ``seconds`` on ``gpu`` cost on this account; local time counts in device hours."""
+    price = account.gpu(gpu).usd_per_second
+    return amount_for(seconds, account.unit or Unit.GPU_HOURS, price)
 
 
 def _candidate(
@@ -114,32 +113,23 @@ def _candidate(
 ) -> Candidate:
     """Placement's view of one account."""
     facts = account.facts
-    free_seconds, paid_seconds = None, 0
-    if left is not None and account.unit is not None:
+    free, paid = Decimal(0), Decimal(0)
+    if left is not None:
         free = max(left.amount - account.paid_cap, Decimal(0))
         paid = min(left.amount, account.paid_cap)
-        free_seconds = _seconds(account, free)
-        paid_seconds = _seconds(account, paid)
     return Candidate(
         name=account.name,
         local=account.provider == "local",
-        has_gpu=account.provider != "local" or account.device not in (None, "cpu"),
+        gpus=account.gpus,
         usable=account.name not in failed,
         busy=facts.one_session_at_a_time and account.name in busy,
         session_limit=account.session_limit,
-        free_seconds=free_seconds,
-        paid_seconds=paid_seconds,
-        price_per_second=facts.usd_per_second,
+        unit=account.unit if left is not None else None,
+        free=free,
+        paid=paid,
+        extra_seconds=facts.extra_seconds,
         resets_at=left.resets_at if left is not None else None,
     )
-
-
-def _seconds(account: Account, amount: Decimal) -> int:
-    """Whole seconds of session that ``amount`` pays for, after the provider's extra time."""
-    facts = account.facts
-    unit = account.unit or Unit.GPU_HOURS
-    total = seconds_for(amount, unit, facts.gpu_count, facts.usd_per_second)
-    return max(total - facts.extra_seconds, 0)
 
 
 def _failed_checks(home: Home) -> set[str]:

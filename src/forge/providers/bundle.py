@@ -30,6 +30,7 @@ class SessionSpec:
         requirements: Extra pip requirements for a cloud session.
         resume: The snapshot to continue from, or None for the first session.
         seconds: The session's hard limit, or None for no limit.
+        gpu: The GPU the session runs on, by its name in the account's catalogue.
         torch: The torch version the session must run.
     """
 
@@ -41,6 +42,7 @@ class SessionSpec:
     requirements: list[str]
     resume: Path | None
     seconds: int | None
+    gpu: str
     torch: str
 
     @property

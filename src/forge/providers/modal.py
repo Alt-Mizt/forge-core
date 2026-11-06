@@ -1,4 +1,4 @@
-"""Run sessions in Modal sandboxes: one T4, no network, gVisor, and a Modal-enforced timeout.
+"""Run sessions in Modal sandboxes: one GPU, no network, gVisor, and a Modal-enforced timeout.
 
 Each call goes through ``bridge``, so the Modal SDK and the account's token live only in a
 short-lived worker process. By default a Modal account is used only while it has free
@@ -34,6 +34,7 @@ class Client:
             "handle": spec.handle,
             "bundle": base64.b64encode(build(spec)).decode(),
             "seconds": spec.seconds,
+            "gpu": spec.gpu,
             "torch": spec.torch,
             "requirements": spec.requirements,
         }

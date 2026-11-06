@@ -35,8 +35,8 @@ STARTING, ACTIVE, RECORDED = "starting", "active", "recorded"
 
 # A journal is a JSON object with these keys:
 #   version, run, state, job {folder, script, args, requirements, digest},
-#   request {seconds, needs_gpu}, and sessions: a list with one entry per session:
-#   number, account, handle, phase, start, seconds, hold (amount held, or null),
+#   request {seconds, gpu}, and sessions: a list with one entry per session:
+#   number, account, gpu, handle, phase, start, seconds, hold (amount held, or null),
 #   and once ended: end, outcome.
 
 

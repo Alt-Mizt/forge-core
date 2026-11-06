@@ -1,8 +1,9 @@
 """Modal SDK calls, run only inside a short-lived worker process (see ``bridge``).
 
-A session is one sandbox: a T4, no network, gVisor, and a timeout that Modal enforces. The
-image has the session's torch version baked in. The sandbox waits for its folder, runs the
-session, then stays up a short while so forge can collect the results.
+A session is one sandbox: the GPU forge chose, capped CPU and memory, no network, gVisor,
+and a timeout that Modal enforces. The image has the session's torch version baked in. The
+sandbox waits for its folder, runs the session, then stays up a short while so forge can
+collect the results.
 """
 
 from __future__ import annotations
@@ -12,8 +13,14 @@ from typing import Any
 
 import modal
 
+from forge.accounts import MODAL_SANDBOX_CORES, MODAL_SANDBOX_GIB
+
 APP_NAME = "forge"
-GPU = "T4"
+MIB_PER_GIB = 1024
+# The sandbox asks for Modal's smallest default and may grow up to forge's cap, which is
+# what bounds a session's price (see forge.accounts).
+CPU = (0.125, float(MODAL_SANDBOX_CORES))
+MEMORY_MIB = (128, MODAL_SANDBOX_GIB * MIB_PER_GIB)
 TAG = "forge_session"
 PYTHON = "3.11"
 # After the session ends, the sandbox waits this long for forge to collect its results.
@@ -75,7 +82,9 @@ class Client:
             command,
             app=modal.App.lookup(APP_NAME, create_if_missing=True),
             image=image,
-            gpu=GPU,
+            gpu=request["gpu"],
+            cpu=CPU,
+            memory=MEMORY_MIB,
             runtime="gvisor",
             timeout=seconds + COLLECT_SECONDS,
             block_network=True,

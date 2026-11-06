@@ -14,12 +14,34 @@ from decimal import Decimal
 from pathlib import Path
 
 from forge import files
+from forge.core.placement import CPU, Gpu
 from forge.core.quota import Allowance, Period, Unit
 
 NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")
 PROVIDERS = ("kaggle", "modal", "local")
 HOURS = 3600
 SATURDAY = 5
+
+
+# Modal's published prices, read on modal.com/pricing on 6 November 2026. A sandbox is
+# billed for its GPU plus the larger of the CPU and memory it asked for or used, at three
+# times list price. forge caps a sandbox at 4 cores and 32 GiB, so a GPU's price below is
+# the GPU's own price plus that cap at sandbox rates: the most a session can cost.
+MODAL_SANDBOX_CORES = 4
+MODAL_SANDBOX_GIB = 32
+MODAL_SANDBOX_USD_PER_SECOND = MODAL_SANDBOX_CORES * Decimal("0.00003942") + (
+    MODAL_SANDBOX_GIB * Decimal("0.00000667")
+)
+MODAL_GPUS = (
+    ("T4", 16, "0.000164"),
+    ("L4", 24, "0.000222"),
+    ("A10", 24, "0.000306"),
+    ("L40S", 48, "0.000542"),
+    ("A100-40GB", 40, "0.000583"),
+    ("A100-80GB", 80, "0.000694"),
+    ("H100", 80, "0.001097"),
+    ("H200", 141, "0.001261"),
+)
 
 
 @dataclass(frozen=True)
@@ -31,38 +53,36 @@ class Facts:
     period: Period | None
     reset_weekday: int
     session_limit: int | None
-    gpu: str
-    gpu_count: int
-    usd_per_second: Decimal
+    # The GPUs a session can ask for, cheapest first. A local account has its device instead.
+    gpus: tuple[Gpu, ...]
     one_session_at_a_time: bool
     # Seconds a session may stay billable after the job's own limit, to hand back results.
     extra_seconds: int = 0
 
 
 FACTS = {
-    # Kaggle gives about 30 GPU-hours a week. Its T4 machine has two T4s, but Kaggle
-    # counts a session's time once.
+    # Kaggle gives about 30 GPU-hours a week on its free T4 machine. The machine has two
+    # T4s, but Kaggle counts a session's time once.
     "kaggle": Facts(
         unit=Unit.GPU_HOURS,
         allowance=Decimal(30),
         period=Period.WEEKLY,
         reset_weekday=SATURDAY,
         session_limit=9 * HOURS,
-        gpu="T4",
-        gpu_count=1,
-        usd_per_second=Decimal(0),
+        gpus=(Gpu("T4", 16, 2, Decimal(0)),),
         one_session_at_a_time=True,
     ),
-    # Modal gives $30 of credit a month. $0.001 a second bounds a T4 sandbox from above.
+    # Modal gives $30 of credit a month.
     "modal": Facts(
         unit=Unit.USD,
         allowance=Decimal(30),
         period=Period.MONTHLY,
         reset_weekday=0,
         session_limit=24 * HOURS,
-        gpu="T4",
-        gpu_count=1,
-        usd_per_second=Decimal("0.001"),
+        gpus=tuple(
+            Gpu(name, memory, 1, Decimal(price) + MODAL_SANDBOX_USD_PER_SECOND)
+            for name, memory, price in MODAL_GPUS
+        ),
         one_session_at_a_time=False,
         extra_seconds=120,
     ),
@@ -73,9 +93,7 @@ FACTS = {
         period=None,
         reset_weekday=0,
         session_limit=None,
-        gpu="local",
-        gpu_count=1,
-        usd_per_second=Decimal(0),
+        gpus=(),
         one_session_at_a_time=True,
     ),
 }
@@ -107,6 +125,21 @@ class Account:
     def facts(self) -> Facts:
         """The provider defaults this account builds on."""
         return FACTS[self.provider]
+
+    @property
+    def gpus(self) -> tuple[Gpu, ...]:
+        """The GPUs a session can ask for, cheapest first; on this machine, its device."""
+        if self.provider == "local":
+            return (Gpu(self.device or CPU, 0, 1, Decimal(0)),)
+        return self.facts.gpus
+
+    def gpu(self, name: str) -> Gpu:
+        """The GPU called ``name`` on this account, or a refusal naming the ones it has."""
+        for gpu in self.gpus:
+            if gpu.name == name:
+                return gpu
+        offered = ", ".join(gpu.name for gpu in self.gpus)
+        raise ValueError(f"{self.name} has no GPU called {name}. It offers: {offered}.")
 
     @property
     def unit(self) -> Unit | None:
