@@ -12,6 +12,9 @@ It is for students, researchers and anyone whose compute comes in pieces: a free
 quota here, some credit there, a laptop. Out of the box it only uses free time. Built in
 South Africa.
 
+Docs site: [alt-mizt.github.io/forge-core](https://alt-mizt.github.io/forge-core/), once
+GitHub Pages is switched on for the repo. Until then the same pages are under `docs/`.
+
 ```text
 forge add kaggle                  # plug in an account
 forge add modal
@@ -263,8 +266,9 @@ See [docs/architecture.md](docs/architecture.md) for how the pieces fit.
 scripts/check.sh
 ```
 
-This runs ruff, pyright, import-linter, a small repo lint and the test suite, offline.
+This runs ruff, pyright, import-linter, a small repo lint, the test suite and a strict
+build of the docs site, offline.
 
 ## Licence
 
-Apache-2.0. See [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](https://github.com/Alt-Mizt/forge-core/blob/main/LICENSE).

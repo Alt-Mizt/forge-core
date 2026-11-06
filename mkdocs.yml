@@ -1,0 +1,47 @@
+site_name: forge
+site_description: Plug in your GPU accounts, run your training script, and forge keeps it going.
+site_url: https://alt-mizt.github.io/forge-core/
+repo_url: https://github.com/Alt-Mizt/forge-core
+repo_name: Alt-Mizt/forge-core
+edit_uri: ""
+docs_dir: docs
+strict: true
+
+nav:
+  - Home: index.md
+  - Free compute: free-compute.md
+  - How a job moves: architecture.md
+  - Providers: providers.md
+  - Snapshots: snapshots.md
+  - Examples: examples.md
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Light mode
+  features:
+    - navigation.footer
+    - content.code.copy
+
+plugins:
+  - search
+  - include-markdown
+
+markdown_extensions:
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
