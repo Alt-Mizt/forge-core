@@ -64,3 +64,25 @@ def test_monthly_resets_roll_over_into_the_next_year():
 def test_naive_times_are_rejected_with_guidance():
     with pytest.raises(ValueError, match="has no time zone"):
         remaining(KAGGLE, [], NOTHING_HELD, datetime(2026, 10, 7, 12))
+
+
+GRANT = Allowance(
+    "grant", Decimal(100), Unit.USD, Period.ONCE, expires=datetime(2027, 1, 31, tzinfo=UTC)
+)
+
+
+def test_a_one_off_credit_counts_every_use_and_never_resets():
+    # Uses from last month and this one both count: a one-off credit has no period.
+    uses = [
+        Use(ended=at(30, 11, month=9), amount=Decimal(40)),
+        Use(ended=at(5, 9), amount=Decimal(25)),
+    ]
+    left = remaining(GRANT, uses, Decimal(5), WEDNESDAY_NOON)
+    assert left.amount == Decimal(30)
+    assert left.resets_at is None
+    assert left.expires == datetime(2027, 1, 31, tzinfo=UTC)
+
+
+def test_an_expired_credit_has_nothing_left():
+    assert remaining(GRANT, [], NOTHING_HELD, at(30, 23, month=1, year=2027)).amount == 100
+    assert remaining(GRANT, [], NOTHING_HELD, at(31, 0, month=1, year=2027)).amount == 0

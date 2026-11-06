@@ -129,6 +129,7 @@ def _candidate(
         paid=paid,
         extra_seconds=facts.extra_seconds,
         resets_at=left.resets_at if left is not None else None,
+        expires=left.expires if left is not None else None,
     )
 
 

@@ -1,11 +1,13 @@
 """Accounts keep provider defaults, references to credentials, and nothing secret."""
 
 import json
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
 
 from forge import accounts
+from forge.core.quota import Period
 from forge.providers import credentials
 
 
@@ -68,3 +70,19 @@ def test_a_modal_call_names_the_profile_without_reading_it(monkeypatch):
     monkeypatch.delenv("MODAL_TOKEN_ID", raising=False)
     account = accounts.new_account("modal", credentials="work")
     assert credentials.environment(account)["MODAL_PROFILE"] == "work"
+
+
+def test_a_one_off_credit_is_stored_with_its_expiry_and_never_resets(tmp_path):
+    path = tmp_path / "accounts.toml"
+    grant = accounts.new_account("modal", allowance=Decimal(100), expires=date(2027, 1, 31))
+    accounts.save(path, [grant])
+    assert "expires = 2027-01-31" in path.read_text()
+    assert accounts.load(path) == [grant]
+    limit = grant.limit()
+    assert limit is not None and limit.period is Period.ONCE
+    assert limit.expires == datetime(2027, 1, 31, tzinfo=UTC)
+
+
+def test_an_expiry_without_an_amount_refuses():
+    with pytest.raises(ValueError, match="--allowance 100 --expires 2027-01-31"):
+        accounts.new_account("modal", expires=date(2027, 1, 31))

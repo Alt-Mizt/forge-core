@@ -108,11 +108,19 @@ forge stores where your credentials are, never the secrets. Each account starts 
 provider's free allowance (Kaggle: 30 GPU-hours a week; Modal: $30 a month) and a paid
 cap of 0. `--allowance` and `--paid-cap` change them.
 
+**A one-off credit.** A grant that does not reset, such as $100 of Modal credit until the
+end of January, is an account of its own:
+`forge add modal --name grant --allowance 100 --expires 2027-01-31`. Every session counts
+against it until it is spent, and it is gone at 00:00 UTC on that date. `forge accounts`
+shows "expires 2027-01-31" where other accounts show their reset.
+
 ## How a job moves
 
 1. forge packs the script's folder (leaving out caches, environments and `outputs/`).
-2. It picks an account: a local GPU that fits first, then free time that resets
-   soonest, then paid time, only where you set a paid cap, cheapest GPU first. On that
+2. It picks an account: a local GPU that fits first, then free time, spending first
+   what you lose first (the allowance that resets soonest or the credit that expires
+   soonest; a credit with no expiry last), then paid time, only where you set a paid
+   cap, cheapest GPU first. On that
    account the session uses the cheapest GPU that fits: the one `--gpu NAME` names,
    any GPU for `--gpu`, or the CPU too when you give no `--gpu`. The session gets the
    shortest of your `--max-seconds`, the account's session limit and the time left on

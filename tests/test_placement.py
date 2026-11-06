@@ -29,6 +29,7 @@ def candidate(name, **changes):
         "paid": Decimal(0),
         "extra_seconds": 0,
         "resets_at": LATER,
+        "expires": None,
     }
     values.update(changes)
     return Candidate(**values)
@@ -149,3 +150,18 @@ def test_a_gpu_no_account_offers_is_refused_with_what_each_one_has():
 
 def test_the_next_reset_is_the_soonest_one():
     assert next_reset([candidate("modal"), candidate("kaggle", resets_at=SOON)]) == SOON
+
+
+def test_free_time_lost_first_is_spent_first():
+    # Wednesday 7 October: Kaggle's week resets on Saturday the 10th, a grant expires on the
+    # 20th, Modal's month resets on 1 November, and a credit with no expiry waits for last.
+    kaggle = candidate("kaggle", resets_at=SOON)
+    grant = modal("grant", resets_at=None, expires=datetime(2026, 10, 20, tzinfo=UTC))
+    monthly = modal("modal", resets_at=LATER)
+    forever = modal("forever", resets_at=None)
+    order = []
+    remaining = [forever, monthly, grant, kaggle]
+    while (placement := choose(remaining, Request())) is not None:
+        order.append(placement.account)
+        remaining = [option for option in remaining if option.name != placement.account]
+    assert order == ["kaggle", "grant", "modal", "forever"]

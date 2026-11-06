@@ -3,6 +3,8 @@
 A provider gives free time as an allowance that starts again on a schedule: 30 GPU-hours
 a week, $30 of credit a month. What is left is that allowance, less the sessions the usage
 log has recorded since the period began, less the time held for sessions still running.
+A one-off credit, such as a $100 grant, never starts again: every recorded use counts
+against it, and once it expires nothing is left.
 
 Nothing here reads a clock. The current time is passed in, so every answer can be checked
 by hand.
@@ -21,10 +23,11 @@ DECEMBER = 12
 
 
 class Period(Enum):
-    """How often an allowance starts again. Resets happen at 00:00 UTC."""
+    """How often an allowance starts again. Resets happen at 00:00 UTC; ONCE never does."""
 
     WEEKLY = "weekly"
     MONTHLY = "monthly"
+    ONCE = "once"
 
 
 class Unit(Enum):
@@ -45,6 +48,7 @@ class Allowance:
         period: How often the allowance starts again.
         reset_weekday: For weekly allowances, the day it starts again (Monday is 0).
             Monthly allowances always start again on the 1st.
+        expires: When the allowance is gone, if it ever is.
     """
 
     account: str
@@ -52,6 +56,7 @@ class Allowance:
     unit: Unit
     period: Period
     reset_weekday: int = 0
+    expires: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -64,12 +69,13 @@ class Use:
 
 @dataclass(frozen=True)
 class Remaining:
-    """What is left of one allowance, and when it starts again."""
+    """What is left of one allowance, when it starts again, and when it expires."""
 
     account: str
     amount: Decimal
     unit: Unit
-    resets_at: datetime
+    resets_at: datetime | None
+    expires: datetime | None
 
 
 def remaining(allowance: Allowance, uses: Iterable[Use], held: Decimal, now: datetime) -> Remaining:
@@ -77,8 +83,9 @@ def remaining(allowance: Allowance, uses: Iterable[Use], held: Decimal, now: dat
 
     A use counts in the period it ended in. A session that spans a reset counts in full in
     the new period: the log has no per-period meter, so splitting its use would be a guess.
-    ``held`` is the time already promised to sessions that are still running. An overspent
-    allowance shows zero, never a negative amount.
+    A one-off allowance counts every use. ``held`` is the time already promised to sessions
+    that are still running. An overspent or expired allowance shows zero, never a negative
+    amount.
 
     Raises:
         ValueError: If ``now`` is naive, because local time would shift the resets.
@@ -88,17 +95,23 @@ def remaining(allowance: Allowance, uses: Iterable[Use], held: Decimal, now: dat
             f"The time {now.isoformat()} has no time zone. Use UTC, for example datetime.now(UTC)."
         )
     start = current_period_start(allowance, now)
-    used = sum((use.amount for use in uses if use.ended > start), Decimal(0))
+    used = sum((use.amount for use in uses if start is None or use.ended > start), Decimal(0))
+    left = max(allowance.amount - used - held, Decimal(0))
+    if allowance.expires is not None and now >= allowance.expires:
+        left = Decimal(0)
     return Remaining(
         account=allowance.account,
-        amount=max(allowance.amount - used - held, Decimal(0)),
+        amount=left,
         unit=allowance.unit,
         resets_at=next_reset(allowance, now),
+        expires=allowance.expires,
     )
 
 
-def current_period_start(allowance: Allowance, now: datetime) -> datetime:
-    """The most recent reset at or before ``now``."""
+def current_period_start(allowance: Allowance, now: datetime) -> datetime | None:
+    """The most recent reset at or before ``now``; None for a one-off allowance."""
+    if allowance.period is Period.ONCE:
+        return None
     midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
     if allowance.period is Period.MONTHLY:
         return midnight.replace(day=1)
@@ -106,9 +119,11 @@ def current_period_start(allowance: Allowance, now: datetime) -> datetime:
     return midnight - timedelta(days=days_since_reset)
 
 
-def next_reset(allowance: Allowance, now: datetime) -> datetime:
-    """The first reset after ``now``."""
+def next_reset(allowance: Allowance, now: datetime) -> datetime | None:
+    """The first reset after ``now``; None for a one-off allowance, which never resets."""
     start = current_period_start(allowance, now)
+    if start is None:
+        return None
     if allowance.period is Period.WEEKLY:
         return start + timedelta(days=DAYS_PER_WEEK)
     if start.month == DECEMBER:

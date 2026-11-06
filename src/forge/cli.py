@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -58,6 +59,7 @@ def _add(home: Home, options: argparse.Namespace) -> int:
         paid_cap=_decimal(options.paid_cap),
         session_limit=options.session_limit,
         device=_device(options) if options.provider == "local" else None,
+        expires=options.expires,
     )
     if any(item.name == account.name for item in known):
         raise ValueError(f"An account named {account.name} exists. Choose another --name.")
@@ -84,7 +86,7 @@ def _accounts(home: Home, options: argparse.Namespace) -> int:
     left = accounting.remaining(home, known, accounting.now())
     checks = json.loads(home.checks.read_text()) if home.checks.exists() else {}
     sys.stdout.write(
-        f"{'Account':<12}{'Provider':<10}{'Free left':>14}  {'Resets (UTC)':<17}{'Check':<13}GPUs\n"
+        f"{'Account':<12}{'Provider':<10}{'Free left':>14}  {'Resets (UTC)':<19}{'Check':<13}GPUs\n"
     )
     for account in known:
         sys.stdout.write(_account_row(account, left.get(account.name), checks.get(account.name)))
@@ -99,9 +101,12 @@ def _account_row(
     free, resets = "unlimited", "-"
     if left is not None and account.unit is not None:
         free = f"{max(left.amount - account.paid_cap, Decimal(0)):.2f} {_unit(account)}"
-        resets = left.resets_at.strftime("%Y-%m-%d %H:%M")
+        if left.resets_at is not None:
+            resets = left.resets_at.strftime("%Y-%m-%d %H:%M")
+        elif left.expires is not None:
+            resets = f"expires {left.expires.date().isoformat()}"
     result = "not checked" if check is None else ("ok" if check["ok"] else "failed")
-    return f"{account.name:<12}{account.provider:<10}{free:>14}  {resets:<17}{result:<13}{gpus}\n"
+    return f"{account.name:<12}{account.provider:<10}{free:>14}  {resets:<19}{result:<13}{gpus}\n"
 
 
 def _gpus(home: Home, options: argparse.Namespace) -> int:
@@ -225,6 +230,14 @@ def _device(options: argparse.Namespace) -> str:
     return "mps" if torch.backends.mps.is_available() else "cpu"
 
 
+def _date(value: str) -> date:
+    """Parse a date option such as 2027-01-31."""
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a date like 2027-01-31") from None
+
+
 def _decimal(value: str | None) -> Decimal | None:
     """Parse an optional decimal option."""
     return Decimal(value) if value is not None else None
@@ -260,6 +273,12 @@ def _parser() -> argparse.ArgumentParser:
     add.add_argument("--credentials", type=Path, help="Kaggle token file (default ~/.kaggle).")
     add.add_argument("--profile", help="Modal profile name (default: Modal's active profile).")
     add.add_argument("--allowance", help="Free amount per period, if not the provider default.")
+    add.add_argument(
+        "--expires",
+        type=_date,
+        metavar="DATE",
+        help="Make the allowance a one-off credit, gone at 00:00 UTC on DATE (2027-01-31).",
+    )
     add.add_argument("--paid-cap", help="Paid time forge may use per period (default 0).")
     add.add_argument("--session-limit", type=int, help="Longest session, in seconds.")
     add.add_argument("--device", choices=("cuda", "mps", "cpu"), help="For local accounts.")

@@ -2,7 +2,8 @@
 
 An account stores a reference to its credentials (a token file path or a Modal profile
 name), never the secret itself. Each provider brings defaults for its free allowance and
-its session limit, which ``forge add`` options can override.
+its session limit, which ``forge add`` options can override. An allowance with an expiry
+date is a one-off credit: it never starts again, and it is gone at 00:00 UTC that day.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 import re
 import tomllib
 from dataclasses import dataclass
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from pathlib import Path
 
@@ -111,6 +113,7 @@ class Account:
         paid_cap: How much paid time per period forge may use. Zero means free time only.
         session_limit: Longest single session in seconds; None means no limit.
         device: For a local account, ``cuda``, ``mps`` or ``cpu``.
+        expires: The day a one-off credit is gone; None for an allowance that resets.
     """
 
     name: str
@@ -120,6 +123,7 @@ class Account:
     paid_cap: Decimal
     session_limit: int | None
     device: str | None = None
+    expires: date | None = None
 
     @property
     def facts(self) -> Facts:
@@ -152,7 +156,10 @@ class Account:
         if self.allowance is None or facts.unit is None or facts.period is None:
             return None
         total = self.allowance + self.paid_cap
-        return Allowance(self.name, total, facts.unit, facts.period, facts.reset_weekday)
+        if self.expires is None:
+            return Allowance(self.name, total, facts.unit, facts.period, facts.reset_weekday)
+        gone = datetime.combine(self.expires, time(), UTC)
+        return Allowance(self.name, total, facts.unit, Period.ONCE, expires=gone)
 
 
 def new_account(
@@ -164,6 +171,7 @@ def new_account(
     paid_cap: Decimal | None = None,
     session_limit: int | None = None,
     device: str | None = None,
+    expires: date | None = None,
 ) -> Account:
     """Build an account from the provider's defaults, with any value given here instead."""
     if provider not in PROVIDERS:
@@ -174,6 +182,11 @@ def new_account(
     facts = FACTS[provider]
     if paid_cap is not None and paid_cap < 0:
         raise ValueError("A paid cap cannot be negative.")
+    if expires is not None and allowance is None:
+        raise ValueError(
+            "An expiry date belongs to a one-off credit. Give its amount too, "
+            "for example: --allowance 100 --expires 2027-01-31"
+        )
     return Account(
         name=name,
         provider=provider,
@@ -182,6 +195,7 @@ def new_account(
         paid_cap=paid_cap if paid_cap is not None else Decimal(0),
         session_limit=session_limit if session_limit is not None else facts.session_limit,
         device=device,
+        expires=expires,
     )
 
 
@@ -225,6 +239,8 @@ def _fields(account: Account) -> dict[str, str]:
     quoted = {key: _quote(value) for key, value in fields.items()}
     if account.session_limit is not None:
         quoted["session_limit"] = str(account.session_limit)
+    if account.expires is not None:
+        quoted["expires"] = account.expires.isoformat()
     return quoted
 
 
@@ -239,6 +255,7 @@ def _account(name: str, table: dict[str, object]) -> Account:
         raise ValueError(f"accounts.toml has an invalid account {name!r}.")
     allowance = table.get("allowance")
     session_limit = table.get("session_limit")
+    expires = table.get("expires")
     return Account(
         name=name,
         provider=str(table["provider"]),
@@ -247,4 +264,5 @@ def _account(name: str, table: dict[str, object]) -> Account:
         paid_cap=Decimal(str(table.get("paid_cap", "0"))),
         session_limit=int(str(session_limit)) if session_limit is not None else None,
         device=str(table["device"]) if "device" in table else None,
+        expires=date.fromisoformat(str(expires)) if expires is not None else None,
     )

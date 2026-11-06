@@ -49,3 +49,17 @@ def test_a_gpu_no_account_offers_refuses_the_run(monkeypatch, capsys, tmp_path):
     status, printed = forge(monkeypatch, capsys, tmp_path, "run", str(script), "--gpu", "H100")
     assert status == 1
     assert "No account offers H100: local offers cpu." in printed.err
+
+
+def test_accounts_shows_when_a_one_off_credit_expires(monkeypatch, capsys, tmp_path):
+    arguments = ("add", "modal", "--name", "grant", "--allowance", "100", "--expires", "2027-01-31")
+    forge(monkeypatch, capsys, tmp_path, *arguments)
+    _, printed = forge(monkeypatch, capsys, tmp_path, "accounts")
+    assert "100.00 USD  expires 2027-01-31" in printed.out
+
+
+def test_an_expiry_without_an_amount_refuses_on_the_command_line(monkeypatch, capsys, tmp_path):
+    status, printed = forge(
+        monkeypatch, capsys, tmp_path, "add", "modal", "--expires", "2027-01-31"
+    )
+    assert status == 1 and "Give its amount too" in printed.err

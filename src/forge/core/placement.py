@@ -1,9 +1,11 @@
 """Choose which account a job's next session runs on, on which GPU, and for how long.
 
 The caller describes each account as a ``Candidate``; nothing here reads a file or a clock.
-The order of preference is: a local machine that fits the job, then free allowances with
-the soonest reset first, then paid time on accounts that allow it, cheapest first. On each
-account the session uses the cheapest GPU that fits the request.
+The order of preference is: a local machine that fits the job, then free time, then paid
+time on accounts that allow it, cheapest first. Free time is spent first where it is lost
+first: recurring allowances by their next reset, one-off credits by their expiry, and a
+credit that never expires last. On each account the session uses the cheapest GPU that
+fits the request.
 """
 
 from __future__ import annotations
@@ -56,6 +58,7 @@ class Candidate:
         paid: Paid amount left under the account's paid cap, in ``unit``.
         extra_seconds: Seconds a session stays billable after its limit, to hand back results.
         resets_at: When the free allowance starts again, if it has one.
+        expires: When a one-off credit is gone, if it has an expiry.
     """
 
     name: str
@@ -69,6 +72,7 @@ class Candidate:
     paid: Decimal
     extra_seconds: int
     resets_at: datetime | None
+    expires: datetime | None
 
 
 @dataclass(frozen=True)
@@ -182,14 +186,15 @@ def _shortest(*limits: int | None) -> int | None:
 def _rank(
     candidate: Candidate, tier: int, gpu: Gpu, request: Request
 ) -> tuple[int, float, bool, str]:
-    """Sort key: tier, then soonest reset (free) or the GPU's price (paid), then a fresh account.
+    """Sort key: tier, then the free time lost first or the GPU's price, then a fresh account.
 
     Moving to a different account than the one just used breaks ties, so a job whose
     session hit its limit continues elsewhere when an equal choice exists.
     """
     detail = 0.0
     if tier == FREE:
-        detail = candidate.resets_at.timestamp() if candidate.resets_at else float("inf")
+        lost = candidate.resets_at or candidate.expires
+        detail = lost.timestamp() if lost else float("inf")
     elif tier == PAID:
         detail = float(gpu.usd_per_second)
     return (tier, detail, candidate.name == request.previous, candidate.name)
