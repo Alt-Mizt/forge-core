@@ -46,9 +46,9 @@ two accounts to finish, and its final weights must match an uninterrupted run. H
 sessions it takes depends on how quickly the machine starts Python; this is one run:
 
 ```text
-Account     Provider       Free left  Resets (UTC)     Check        GPUs
-first       local          unlimited  -                not checked  cpu
-second      local          unlimited  -                not checked  cpu
+Account     Provider       Free left  Resets (UTC)       Check                         GPUs
+first       local          unlimited  -                  not checked                   cpu
+second      local          unlimited  -                  not checked                   cpu
 Run hop started.
 Session 1 on first (up to 10 s).
 Snapshot saved after step 6 in 0.016s.
@@ -115,8 +115,8 @@ These 4 sessions cover the job's 0.01 hours.
 ```
 
 The plan counts the job's hours as session time. Each real session also spends a few
-seconds starting Python and loading the snapshot, so with 10-second sessions the run
-above took 6. The plan counts no resets along the way. Without `--hours` it shows the
+seconds starting Python and loading the snapshot: this run took the 4 planned sessions
+on a Linux machine and 6 on a slower Mac. The plan counts no resets along the way. Without `--hours` it shows the
 next session only.
 
 ## Say what the job needs
