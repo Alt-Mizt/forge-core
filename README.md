@@ -160,6 +160,9 @@ end of January, is an account of its own:
 against it until it is spent, and it is gone at 00:00 UTC on that date. `forge accounts`
 shows "expires 2027-01-31" where other accounts show their reset.
 
+Where free GPU time exists today, and what each place asks for, is in
+[docs/free-compute.md](docs/free-compute.md).
+
 ## How a job moves
 
 1. forge packs the script's folder (leaving out caches, environments and `outputs/`).
