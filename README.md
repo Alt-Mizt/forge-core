@@ -18,6 +18,7 @@ forge add modal
 forge add local                   # this machine
 forge accounts                    # what is plugged in and how much free time is left
 forge gpus                        # every GPU your accounts offer, and its price
+forge plan train.py --hours 6     # the sessions a run would take, before anything runs
 forge run train.py -- --epochs 3  # runs where there is time; moves when a session ends
 forge run train.py --gpu A100-80GB  # on that GPU only; --gpu alone means any GPU
 forge status                      # every run, its state and the account it is on
@@ -88,6 +89,34 @@ Snapshot saved after step 11 in 0.009s.
 
 The script run straight through on Modal, with no stop, prints the same hash. The job
 changed provider halfway and its final weights did not change by a single bit.
+
+## Plan first
+
+`forge plan` takes the same options as `forge run`, plus `--hours`, the job's length. It
+reads your accounts as they stand and runs placement forward: place a session, take its
+time off that account, place the next, until the hours are covered or no account can
+take the rest. Nothing is started, held or written. `scripts/demo-plan.sh` plans the
+tiny job on the two 10-second accounts, then runs it:
+
+```text
+$ forge plan examples/tiny/train.py --hours 0.01 -- --step-delay 1
+Session  Account     GPU             Up to  Time  Why
+1        first       cpu              10 s  free  local
+2        second      cpu              10 s  free  local
+3        first       cpu              10 s  free  local
+4        second      cpu               6 s  free  local
+
+Account     Left after these sessions
+first       unlimited
+second      unlimited
+
+These 4 sessions cover the job's 0.01 hours.
+```
+
+The plan counts the job's hours as session time. Each real session also spends a few
+seconds starting Python and loading the snapshot, so with 10-second sessions the run
+above took 6. The plan counts no resets along the way. Without `--hours` it shows the
+next session only.
 
 ## Plug in an account
 

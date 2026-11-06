@@ -63,3 +63,23 @@ def test_an_expiry_without_an_amount_refuses_on_the_command_line(monkeypatch, ca
         monkeypatch, capsys, tmp_path, "add", "modal", "--expires", "2027-01-31"
     )
     assert status == 1 and "Give its amount too" in printed.err
+
+
+def test_plan_prints_the_route_and_starts_nothing(monkeypatch, capsys, tmp_path):
+    for name in ("first", "second"):
+        arguments = ("add", "local", "--name", name, "--device", "cpu", "--session-limit", "10")
+        forge(monkeypatch, capsys, tmp_path, *arguments)
+    script = tmp_path / "job" / "train.py"
+    script.parent.mkdir()
+    script.write_text("")
+    hours = str(25 / 3600)
+    status, printed = forge(monkeypatch, capsys, tmp_path, "plan", str(script), "--hours", hours)
+    assert status == 0
+    rows = [line.split()[:4] for line in printed.out.splitlines()[1:4]]
+    assert rows == [
+        ["1", "first", "cpu", "10"],
+        ["2", "second", "cpu", "10"],
+        ["3", "first", "cpu", "5"],
+    ]
+    assert "These 3 sessions cover the job" in printed.out
+    assert list((tmp_path / "state" / "runs").iterdir()) == []

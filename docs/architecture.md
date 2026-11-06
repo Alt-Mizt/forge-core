@@ -5,8 +5,11 @@ time it may use; thin edges talk to files, provider SDKs and processes.
 
 ```mermaid
 flowchart TD
-    cli["cli: add, accounts, check, run, status, pause, resume, logs, down"]
+    cli["cli: add, accounts, gpus, check, plan, run, status, pause, resume, logs, down"]
     cli --> loop["loop: place, hold, start, follow, fetch, record"]
+    cli --> plan["plan: the route before anything runs"]
+    plan --> route["core.route: placement run forward (pure)"]
+    route --> placement
     cli --> control["control: pause, resume, down, status, logs"]
     control --> loop
     loop --> placement["core.placement: choose the account (pure)"]
@@ -28,12 +31,13 @@ flowchart TD
 | `forge.home` | Finds forge's config and state folders: `FORGE_HOME`, else the XDG locations. |
 | `forge.accounts` | The accounts in `accounts.toml`, with each provider's defaults. Stores credential references, never secrets. |
 | `forge.jobs` | Describes and packs a job folder; picks the torch version for a session. |
-| `forge.core` | Time left on an allowance, seconds-to-allowance conversion, and placement. Pure functions; the time is passed in. |
+| `forge.core` | Time left on an allowance, seconds-to-allowance conversion, placement, and the route a job would take (`core.route`, placement run forward). Pure functions; the time is passed in. |
 | `forge.ledger` | The usage log: one line per recorded session, each hashing the line before. |
 | `forge.files` | Atomic writes, synced appends and lock files, for every file forge keeps. |
 | `forge.accounting` | Connects accounts to the usage log and the run journals: time left per account, the hold for a session, recording it. |
 | `forge.runs` | The run journal, written before every outside action. A running session's hold is a field in it. |
 | `forge.loop`, `forge.control` | The run loop, and the commands that act on existing runs. |
+| `forge.plan` | `forge plan`: reads the accounts once, runs `core.route` and prints the sessions. Starts, holds and writes nothing. |
 | `forge.providers` | The provider interface and the local, Kaggle and Modal adapters. |
 | `forge.session`, `forge.runner` | What runs on the session machine: the session runner and the wrapper around your script. |
 | `forge.snapshot` | Snapshots of model, optimiser, random streams and data position. |

@@ -14,9 +14,9 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from forge import accounting, accounts, control, jobs, loop, runs
+from forge import accounting, accounts, control, jobs, loop, plan, runs
 from forge.core.placement import ANY, Gpu, Request
-from forge.core.quota import Remaining, Unit
+from forge.core.quota import Remaining
 from forge.home import Home, locate
 from forge.providers import for_account
 
@@ -108,7 +108,8 @@ def _account_row(account: accounts.Account, left: Remaining | None, result: str)
     gpus = ", ".join(gpu.name for gpu in account.gpus)
     free, resets = "unlimited", "-"
     if left is not None and account.unit is not None:
-        free = f"{max(left.amount - account.paid_cap, Decimal(0)):.2f} {_unit(account)}"
+        free_left = max(left.amount - account.paid_cap, Decimal(0))
+        free = f"{free_left:.2f} {accounts.UNIT_LABELS[account.unit]}"
         if left.resets_at is not None:
             resets = left.resets_at.strftime("%Y-%m-%d %H:%M")
         elif left.expires is not None:
@@ -167,6 +168,13 @@ def _run(home: Home, options: argparse.Namespace) -> int:
     loop.start(home, job, request, name)
     sys.stdout.write(f"Run {name} started.\n")
     return loop.follow(home, name, sys.stdout, options.on)
+
+
+def _plan(home: Home, options: argparse.Namespace) -> int:
+    """Print the sessions a run would take, without starting anything."""
+    jobs.describe(options.script, options.args, options.requirements)
+    request = Request(seconds=options.max_seconds, gpu=options.gpu, on=options.on)
+    return plan.show(home, request, options.hours, sys.stdout)
 
 
 def _status(home: Home, options: argparse.Namespace) -> int:
@@ -250,11 +258,6 @@ def _decimal(value: str | None) -> Decimal | None:
     return Decimal(value) if value is not None else None
 
 
-def _unit(account: accounts.Account) -> str:
-    """A short label for the account's unit."""
-    return "GPU-h" if account.unit is Unit.GPU_HOURS else "USD"
-
-
 COMMANDS = {
     "add": _add,
     "remove": _remove,
@@ -262,6 +265,7 @@ COMMANDS = {
     "gpus": _gpus,
     "check": _check,
     "run": _run,
+    "plan": _plan,
     "status": _status,
     "pause": _pause,
     "resume": _resume,
@@ -298,18 +302,13 @@ def _parser() -> argparse.ArgumentParser:
         "run",
         help="Run a training script where there is time. Put its own arguments after --.",
     )
-    run.add_argument("script", type=Path)
-    run.add_argument("--on", help="Start on this account.")
+    _job_options(run)
     run.add_argument("--name", help="A name for the run.")
-    run.add_argument("--max-seconds", type=int, help="Longest session this run may use.")
-    run.add_argument(
-        "--gpu",
-        nargs="?",
-        const=ANY,
-        metavar="NAME",
-        help="Run on this GPU (see forge gpus), or on any GPU when no name is given.",
+    planner = commands.add_parser(
+        "plan", help="Show the sessions a run would take, without starting anything."
     )
-    run.add_argument("--requirements", type=Path, help="Extra pip requirements for clouds.")
+    _job_options(planner)
+    planner.add_argument("--hours", type=float, help="How long the job runs, for the route.")
     commands.add_parser("status", help="List runs.")
     for name, summary in (("pause", "Pause a run at a snapshot."), ("logs", "Print a run's logs.")):
         commands.add_parser(name, help=summary).add_argument("run")
@@ -319,6 +318,21 @@ def _parser() -> argparse.ArgumentParser:
     down = commands.add_parser("down", help="Stop a run, or all, and confirm shutdown.")
     down.add_argument("run", nargs="?")
     return parser
+
+
+def _job_options(command: argparse.ArgumentParser) -> None:
+    """The options ``run`` and ``plan`` share: the script and what its sessions need."""
+    command.add_argument("script", type=Path)
+    command.add_argument("--on", help="Start on this account.")
+    command.add_argument("--max-seconds", type=int, help="Longest session this run may use.")
+    command.add_argument(
+        "--gpu",
+        nargs="?",
+        const=ANY,
+        metavar="NAME",
+        help="Run on this GPU (see forge gpus), or on any GPU when no name is given.",
+    )
+    command.add_argument("--requirements", type=Path, help="Extra pip requirements for clouds.")
 
 
 if __name__ == "__main__":

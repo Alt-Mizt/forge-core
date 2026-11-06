@@ -23,6 +23,7 @@ NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")
 PROVIDERS = ("kaggle", "modal", "local")
 HOURS = 3600
 SATURDAY = 5
+UNIT_LABELS = {Unit.GPU_HOURS: "GPU-h", Unit.USD: "USD"}
 
 
 # Modal's published prices, read on modal.com/pricing on 6 November 2026. A sandbox is

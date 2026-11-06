@@ -109,7 +109,7 @@ def choose(candidates: list[Candidate], request: Request) -> Placement | None:
         if gpu is None or not _eligible(candidate, request):
             continue
         tier, seconds = _time_left(candidate, gpu)
-        seconds = _shortest(seconds, candidate.session_limit, request.seconds)
+        seconds = shortest(seconds, candidate.session_limit, request.seconds)
         if seconds is not None and seconds < MINIMUM_SECONDS:
             continue
         placement = Placement(candidate.name, gpu.name, seconds, paid=tier == PAID)
@@ -177,7 +177,7 @@ def _time_left(candidate: Candidate, gpu: Gpu) -> tuple[int, int | None]:
     return PAID, seconds_left(candidate, candidate.paid, gpu)
 
 
-def _shortest(*limits: int | None) -> int | None:
+def shortest(*limits: int | None) -> int | None:
     """The smallest of the limits that are set, or None when none is."""
     present = [limit for limit in limits if limit is not None]
     return min(present) if present else None
