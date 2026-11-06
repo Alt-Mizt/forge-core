@@ -116,8 +116,8 @@ These 4 sessions cover the job's 0.01 hours.
 
 The plan counts the job's hours as session time. Each real session also spends a few
 seconds starting Python and loading the snapshot: this run took the 4 planned sessions
-on a Linux machine and 6 on a slower Mac. The plan counts no resets along the way. Without `--hours` it shows the
-next session only.
+on a Linux machine and 6 on a slower Mac. The plan counts no resets along the way.
+Without `--hours` it shows the next session only.
 
 ## Say what the job needs
 
@@ -166,11 +166,10 @@ shows "expires 2027-01-31" where other accounts show their reset.
 2. It picks an account: a local GPU that fits first, then free time, spending first
    what you lose first (the allowance that resets soonest or the credit that expires
    soonest; a credit with no expiry last), then paid time, only where you set a paid
-   cap, cheapest GPU first. On that
-   account the session uses the cheapest GPU that fits: the one `--gpu NAME` names,
-   any GPU for `--gpu`, or the CPU too when you give no `--gpu`. The session gets the
-   shortest of your `--max-seconds`, the account's session limit and the time left on
-   that GPU.
+   cap, cheapest GPU first. On that account the session uses the cheapest GPU that
+   fits: the one `--gpu NAME` names, any GPU for `--gpu`, or the CPU too when you give
+   no `--gpu`. The session gets the shortest of your `--max-seconds`, the account's
+   session limit and the time left on that GPU.
 3. It holds that time against the account, then starts the session with a limit the
    provider enforces itself.
 4. Inside the session, a wrapper runs your script unchanged. Shortly before the limit
@@ -187,8 +186,9 @@ run's journal with the reason and nothing in the usage log, passes over the acco
 15 minutes and tries the next one. `forge accounts` shows "cooling down until HH:MM UTC".
 
 If no account has time left, or none could start, the run waits and forge says which
-accounts failed and when the next allowance resets; `forge resume RUN` continues it. Ctrl-C detaches without stopping the session,
-and nothing carries the run on until you resume it.
+accounts failed and when the next allowance resets; `forge resume RUN` continues it.
+Ctrl-C detaches without stopping the session, and nothing carries the run on until you
+resume it.
 
 `forge run ... --detach` starts a background follower instead and returns at once. The
 follower is `forge resume RUN` in its own process, writing to `follow.log` in the run's
